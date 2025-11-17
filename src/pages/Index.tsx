@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ScanLine, BarChart3, History, Settings } from "lucide-react";
+import triplusLogo from "@/assets/triplus-logo.png";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -11,8 +12,8 @@ const Index = () => {
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="text-center mb-12 space-y-4">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-primary/10 mb-4">
-            <ScanLine className="w-10 h-10 text-primary" />
+          <div className="inline-flex items-center justify-center mb-6">
+            <img src={triplusLogo} alt="Triplus Industry" className="h-16 md:h-20" />
           </div>
           <h1 className="text-4xl md:text-5xl font-bold text-foreground">
             Quality Sorting System
