@@ -12,11 +12,10 @@ const Index = () => {
         {/* Header */}
         <div className="text-center mb-12 space-y-4">
           <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 dark:from-blue-400 dark:via-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">
-            Quality Sorting System
+            Quality Report Sorting System
           </h1>
           <p className="text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto font-medium">
-            Mobile data capture for SIC location Triplus reporting. Streamline your hourly quality
-            sorting activities with automated part lookup and real-time reporting.
+            Mobile data capture for all factories reporting. Streamline your hourly quality sorting activities with automated part lookup and real-time reporting.
           </p>
         </div>
 
