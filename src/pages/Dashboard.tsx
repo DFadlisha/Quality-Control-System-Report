@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, TrendingDown, Package, Clock, AlertTriangle, Download } from "lucide-react";
+import { ArrowLeft, TrendingDown, Package, Clock, AlertTriangle, Download, Image as ImageIcon } from "lucide-react";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import {
@@ -27,6 +27,7 @@ interface SortingLog {
   quantity_ng: number;
   logged_at: string;
   operator_name?: string;
+  reject_image_url?: string;
 }
 
 interface HourlyData {
@@ -103,14 +104,14 @@ const Dashboard = () => {
     try {
       // Fetch from the hourly_operator_output view
       const { data, error } = await supabase
-        .from("hourly_operator_output")
+        .from("hourly_operator_output" as any)
         .select("*")
         .order("hour", { ascending: false })
         .limit(50); // Get last 50 hours of data
 
       if (error) throw error;
       if (data) {
-        setHourlyOperatorData(data);
+        setHourlyOperatorData(data as unknown as HourlyOperatorOutput[]);
       }
     } catch (error) {
       console.error("Error fetching hourly operator output:", error);
@@ -133,13 +134,13 @@ const Dashboard = () => {
 
     // Process hourly data
     const hourlyMap = new Map<string, { total: number; ng: number }>();
-    
+
     data.forEach((log) => {
       const hour = new Date(log.logged_at).toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
       });
-      
+
       const existing = hourlyMap.get(hour) || { total: 0, ng: 0 };
       hourlyMap.set(hour, {
         total: existing.total + log.quantity_all_sorting,
@@ -164,7 +165,7 @@ const Dashboard = () => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    
+
     // Professional color scheme
     const colors = {
       primary: [30, 58, 138],      // Deep blue
@@ -182,13 +183,13 @@ const Dashboard = () => {
       // Header background
       doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
       doc.rect(0, 0, pageWidth, 35, "F");
-      
+
       // Company/Title text
       doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
       doc.setFontSize(20);
       doc.setFont("helvetica", "bold");
       doc.text("SIC Triplus - Quality Sorting Report", pageWidth / 2, 18, { align: "center" });
-      
+
       // Subtitle
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
@@ -198,7 +199,7 @@ const Dashboard = () => {
         28,
         { align: "center" }
       );
-      
+
       // Reset text color
       doc.setTextColor(colors.black[0], colors.black[1], colors.black[2]);
       return yPos + 45;
@@ -210,18 +211,18 @@ const Dashboard = () => {
       doc.setDrawColor(color[0] - 20, color[1] - 20, color[2] - 20);
       doc.setLineWidth(0.5);
       doc.roundedRect(x, y, width, height, 3, 3, "FD");
-      
+
       // Label
       doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
       doc.text(label, x + width / 2, y + 8, { align: "center" });
-      
+
       // Value
       doc.setFontSize(16);
       doc.setFont("helvetica", "bold");
       doc.text(value, x + width / 2, y + 18, { align: "center" });
-      
+
       // Reset text color
       doc.setTextColor(colors.black[0], colors.black[1], colors.black[2]);
     };
@@ -230,11 +231,11 @@ const Dashboard = () => {
       // Full page background gradient effect (top section)
       doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
       doc.rect(0, 0, pageWidth, pageHeight * 0.4, "F");
-      
+
       // Decorative bottom section
       doc.setFillColor(colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]);
       doc.rect(0, pageHeight * 0.4, pageWidth, pageHeight * 0.6, "F");
-      
+
       // Company Logo Area (placeholder - can be replaced with actual logo if available)
       const logoY = 50;
       doc.setFillColor(colors.white[0], colors.white[1], colors.white[2]);
@@ -243,40 +244,40 @@ const Dashboard = () => {
       doc.setFont("helvetica", "bold");
       doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
       doc.text("T", pageWidth / 2, logoY + 25, { align: "center" });
-      
+
       // Main Title
       doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
       doc.setFontSize(28);
       doc.setFont("helvetica", "bold");
       doc.text("Quality Sorting System", pageWidth / 2, logoY + 70, { align: "center" });
-      
+
       // Subtitle
       doc.setFontSize(14);
       doc.setFont("helvetica", "normal");
       doc.text("SIC Location - Triplus Reporting", pageWidth / 2, logoY + 85, { align: "center" });
-      
+
       // Description Box
       const descY = pageHeight * 0.45;
       doc.setFillColor(colors.white[0], colors.white[1], colors.white[2]);
       doc.roundedRect(20, descY, pageWidth - 40, 35, 5, 5, "F");
-      
+
       doc.setTextColor(colors.black[0], colors.black[1], colors.black[2]);
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
       const description = "Mobile data capture for SIC location Triplus reporting. Streamline your hourly quality sorting activities with automated part lookup and real-time reporting.";
       doc.text(description, pageWidth / 2, descY + 12, { align: "center", maxWidth: pageWidth - 60 });
-      
+
       // Key Features Section
       const featuresY = descY + 50;
       doc.setFontSize(16);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
       doc.text("Key Features", pageWidth / 2, featuresY, { align: "center" });
-      
+
       // Feature boxes
       const featureBoxY = featuresY + 15;
       const featureWidth = (pageWidth - 60) / 3;
-      
+
       // Feature 1: Automated Lookup
       doc.setFillColor(colors.accent[0], colors.accent[1], colors.accent[2]);
       doc.roundedRect(20, featureBoxY, featureWidth, 40, 3, 3, "F");
@@ -288,7 +289,7 @@ const Dashboard = () => {
       doc.setFont("helvetica", "normal");
       doc.text("Part names automatically", 20 + featureWidth / 2, featureBoxY + 18, { align: "center" });
       doc.text("retrieved from database", 20 + featureWidth / 2, featureBoxY + 26, { align: "center" });
-      
+
       // Feature 2: Real-time Updates
       doc.setFillColor(colors.secondary[0], colors.secondary[1], colors.secondary[2]);
       doc.roundedRect(20 + featureWidth + 10, featureBoxY, featureWidth, 40, 3, 3, "F");
@@ -296,7 +297,7 @@ const Dashboard = () => {
       doc.setFontSize(8);
       doc.text("Instant synchronization", 20 + featureWidth + 10 + featureWidth / 2, featureBoxY + 18, { align: "center" });
       doc.text("with live dashboard", 20 + featureWidth + 10 + featureWidth / 2, featureBoxY + 26, { align: "center" });
-      
+
       // Feature 3: NG Rate Tracking
       doc.setFillColor(colors.warning[0], colors.warning[1], colors.warning[2]);
       doc.roundedRect(20 + (featureWidth + 10) * 2, featureBoxY, featureWidth, 40, 3, 3, "F");
@@ -304,23 +305,23 @@ const Dashboard = () => {
       doc.setFontSize(8);
       doc.text("Monitor quality trends", 20 + (featureWidth + 10) * 2 + featureWidth / 2, featureBoxY + 18, { align: "center" });
       doc.text("and prevent issues", 20 + (featureWidth + 10) * 2 + featureWidth / 2, featureBoxY + 26, { align: "center" });
-      
+
       // System Information Box
       const infoY = featureBoxY + 55;
       doc.setFillColor(colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]);
       doc.roundedRect(20, infoY, pageWidth - 40, 30, 3, 3, "F");
-      
+
       doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
       doc.text("System Information", 30, infoY + 8);
-      
+
       doc.setTextColor(colors.darkGray[0], colors.darkGray[1], colors.darkGray[2]);
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
       doc.text("This system integrates barcode scanning with automated database lookup to reduce", 30, infoY + 18, { maxWidth: pageWidth - 60 });
       doc.text("manual input and enable timely hourly reports. All entries are timestamped and stored in real-time.", 30, infoY + 25, { maxWidth: pageWidth - 60 });
-      
+
       // Report Date
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
@@ -335,7 +336,7 @@ const Dashboard = () => {
 
     // Add cover page first
     addCoverPage();
-    
+
     // Add main report content on new page
     doc.addPage();
     let yPosition = addHeader(0);
@@ -355,11 +356,11 @@ const Dashboard = () => {
     // Stat boxes
     addStatBox(14, yPosition, boxWidth, boxHeight, "Total Sorted", stats.totalSorted.toLocaleString(), colors.secondary);
     addStatBox(14 + boxWidth + boxSpacing, yPosition, boxWidth, boxHeight, "Total NG", stats.totalNg.toLocaleString(), colors.danger);
-    
+
     const ngRateColor = stats.ngRate > 5 ? colors.danger : stats.ngRate > 2 ? colors.warning : colors.accent;
     addStatBox(14 + (boxWidth + boxSpacing) * 2, yPosition, boxWidth, boxHeight, "NG Rate", `${stats.ngRate.toFixed(2)}%`, ngRateColor);
     addStatBox(14 + (boxWidth + boxSpacing) * 3, yPosition, boxWidth, boxHeight, "Parts Processed", stats.partsProcessed.toString(), colors.accent);
-    
+
     yPosition += boxHeight + 20;
 
     // Hourly Operator Output Table
@@ -372,7 +373,7 @@ const Dashboard = () => {
       // Section header with background
       doc.setFillColor(colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]);
       doc.rect(14, yPosition - 5, pageWidth - 28, 8, "F");
-      
+
       doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
@@ -398,20 +399,20 @@ const Dashboard = () => {
         head: [["Operator", "Hour", "Logs", "Total Sorted", "NG", "NG Rate"]],
         body: operatorTableData,
         theme: "striped",
-        headStyles: { 
-          fillColor: [colors.primary[0], colors.primary[1], colors.primary[2]], 
+        headStyles: {
+          fillColor: [colors.primary[0], colors.primary[1], colors.primary[2]],
           fontStyle: "bold",
           textColor: [255, 255, 255],
           fontSize: 10,
         },
-        bodyStyles: { 
+        bodyStyles: {
           fontSize: 9,
           textColor: [0, 0, 0],
         },
         alternateRowStyles: {
           fillColor: [colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]],
         },
-        styles: { 
+        styles: {
           cellPadding: 3,
           lineWidth: 0.1,
           lineColor: [200, 200, 200],
@@ -452,7 +453,7 @@ const Dashboard = () => {
       // Section header with background
       doc.setFillColor(colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]);
       doc.rect(14, yPosition - 5, pageWidth - 28, 8, "F");
-      
+
       doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
@@ -474,41 +475,50 @@ const Dashboard = () => {
           log.quantity_all_sorting.toString(),
           log.quantity_ng.toString(),
           `${ngRate.toFixed(1)}%`,
+          log.reject_image_url || "",
         ];
       });
 
       (doc as any).autoTable({
         startY: yPosition,
-        head: [["Time", "Operator", "Part No", "Part Name", "Sorted", "NG", "NG Rate"]],
+        head: [["Time", "Operator Name", "Part Number", "Part Name", "Quantity All Sorting", "Quantity NG", "NG Rate", "Reject Image"]],
         body: recentLogsData,
         theme: "striped",
-        headStyles: { 
-          fillColor: [colors.primary[0], colors.primary[1], colors.primary[2]], 
+        headStyles: {
+          fillColor: [colors.primary[0], colors.primary[1], colors.primary[2]],
           fontStyle: "bold",
           textColor: [255, 255, 255],
           fontSize: 9,
         },
-        bodyStyles: { 
+        bodyStyles: {
           fontSize: 8,
           textColor: [0, 0, 0],
         },
         alternateRowStyles: {
           fillColor: [colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]],
         },
-        styles: { 
+        styles: {
           cellPadding: 2.5,
           lineWidth: 0.1,
           lineColor: [200, 200, 200],
         },
         margin: { left: 14, right: 14 },
         columnStyles: {
-          1: { fontStyle: "bold", cellWidth: 35 },
-          2: { fontFamily: "courier", cellWidth: 40 },
+          1: { fontStyle: "bold", cellWidth: 25 },
+          2: { fontFamily: "courier", cellWidth: 35 },
           4: { halign: "right", cellWidth: 25 },
-          5: { halign: "right", cellWidth: 25, textColor: [colors.danger[0], colors.danger[1], colors.danger[2]] },
-          6: { halign: "right", cellWidth: 30 },
+          5: { halign: "right", cellWidth: 20, textColor: [colors.danger[0], colors.danger[1], colors.danger[2]] },
+          6: { halign: "right", cellWidth: 20 },
+          7: { halign: "center", cellWidth: 25 },
         },
         didParseCell: (data: any) => {
+          // Add link to Image column
+          if (data.column.index === 7 && data.cell.raw) {
+            data.cell.link = data.cell.raw;
+            data.cell.text = ["View Image"];
+            data.cell.styles.textColor = [colors.secondary[0], colors.secondary[1], colors.secondary[2]];
+          }
+
           // Color code NG Rate column
           if (data.column.index === 6 && data.row.index >= 0) {
             const ngRate = parseFloat(data.cell.text[0].replace('%', ''));
@@ -525,15 +535,15 @@ const Dashboard = () => {
     }
 
     // Professional Footer on report pages (skip cover page)
-    const pageCount = doc.getNumberOfPages();
+    const pageCount = (doc as any).getNumberOfPages();
     for (let i = 2; i <= pageCount; i++) {
       doc.setPage(i);
-      
+
       // Footer line
       doc.setDrawColor(colors.primary[0], colors.primary[1], colors.primary[2]);
       doc.setLineWidth(0.5);
       doc.line(14, pageHeight - 20, pageWidth - 14, pageHeight - 20);
-      
+
       // Footer text (adjust page number for cover page)
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
@@ -544,7 +554,7 @@ const Dashboard = () => {
         pageHeight - 12,
         { align: "center" }
       );
-      
+
       // Confidential notice
       doc.setFontSize(7);
       doc.setFont("helvetica", "italic");
@@ -617,22 +627,20 @@ const Dashboard = () => {
             </div>
           </Card>
 
-          <Card className={`p-6 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 ${
-            stats.ngRate > 5
-              ? "bg-gradient-to-br from-red-500 to-red-600"
-              : stats.ngRate > 2
+          <Card className={`p-6 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 ${stats.ngRate > 5
+            ? "bg-gradient-to-br from-red-500 to-red-600"
+            : stats.ngRate > 2
               ? "bg-gradient-to-br from-amber-500 to-amber-600"
               : "bg-gradient-to-br from-emerald-500 to-emerald-600"
-          }`}>
+            }`}>
             <div className="flex items-center justify-between">
               <div>
-                <p className={`text-sm font-medium ${
-                  stats.ngRate > 5
-                    ? "text-red-100"
-                    : stats.ngRate > 2
+                <p className={`text-sm font-medium ${stats.ngRate > 5
+                  ? "text-red-100"
+                  : stats.ngRate > 2
                     ? "text-amber-100"
                     : "text-emerald-100"
-                }`}>
+                  }`}>
                   NG Rate
                 </p>
                 <p className="text-3xl font-bold text-white mt-2">
@@ -753,9 +761,8 @@ const Dashboard = () => {
               <tbody>
                 {hourlyOperatorData.length > 0 ? (
                   hourlyOperatorData.map((row, index) => (
-                    <tr key={`${row.operator_name}-${row.hour}-${index}`} className={`border-b border-slate-200 dark:border-slate-700 ${
-                      index % 2 === 0 ? "bg-slate-50/50 dark:bg-slate-800/50" : "bg-white dark:bg-slate-900"
-                    } hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors`}>
+                    <tr key={`${row.operator_name}-${row.hour}-${index}`} className={`border-b border-slate-200 dark:border-slate-700 ${index % 2 === 0 ? "bg-slate-50/50 dark:bg-slate-800/50" : "bg-white dark:bg-slate-900"
+                      } hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors`}>
                       <td className="py-3 px-4 text-sm font-semibold">
                         {row.operator_name}
                       </td>
@@ -777,13 +784,12 @@ const Dashboard = () => {
                         {row.total_ng}
                       </td>
                       <td
-                        className={`py-3 px-4 text-sm text-right font-semibold ${
-                          row.ng_rate_percent > 5
-                            ? "text-destructive"
-                            : row.ng_rate_percent > 2
+                        className={`py-3 px-4 text-sm text-right font-semibold ${row.ng_rate_percent > 5
+                          ? "text-destructive"
+                          : row.ng_rate_percent > 2
                             ? "text-warning"
                             : "text-success"
-                        }`}
+                          }`}
                       >
                         {row.ng_rate_percent.toFixed(1)}%
                       </td>
@@ -832,15 +838,17 @@ const Dashboard = () => {
                   <th className="text-right py-3 px-4 text-sm font-semibold text-white">
                     NG Rate
                   </th>
+                  <th className="text-center py-3 px-4 text-sm font-semibold text-white">
+                    Image
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {logs.slice(0, 10).map((log, index) => {
                   const ngRate = (log.quantity_ng / log.quantity_all_sorting) * 100;
                   return (
-                    <tr key={log.id} className={`border-b border-slate-200 dark:border-slate-700 ${
-                      index % 2 === 0 ? "bg-slate-50/50 dark:bg-slate-800/50" : "bg-white dark:bg-slate-900"
-                    } hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors`}>
+                    <tr key={log.id} className={`border-b border-slate-200 dark:border-slate-700 ${index % 2 === 0 ? "bg-slate-50/50 dark:bg-slate-800/50" : "bg-white dark:bg-slate-900"
+                      } hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors`}>
                       <td className="py-3 px-4 text-sm">
                         {new Date(log.logged_at).toLocaleTimeString()}
                       </td>
@@ -856,15 +864,29 @@ const Dashboard = () => {
                         {log.quantity_ng}
                       </td>
                       <td
-                        className={`py-3 px-4 text-sm text-right font-semibold ${
-                          ngRate > 5
-                            ? "text-destructive"
-                            : ngRate > 2
+                        className={`py-3 px-4 text-sm text-right font-semibold ${ngRate > 5
+                          ? "text-destructive"
+                          : ngRate > 2
                             ? "text-warning"
                             : "text-success"
-                        }`}
+                          }`}
                       >
                         {ngRate.toFixed(1)}%
+                      </td>
+                      <td className="py-3 px-4 text-sm text-center">
+                        {log.reject_image_url ? (
+                          <div className="relative group flex justify-center">
+                            <a href={log.reject_image_url} target="_blank" rel="noopener noreferrer">
+                              <img
+                                src={log.reject_image_url}
+                                alt="NG"
+                                className="h-8 w-8 object-cover rounded border border-slate-200 dark:border-slate-700 hover:scale-150 transition-transform cursor-pointer"
+                              />
+                            </a>
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 dark:text-slate-600">-</span>
+                        )}
                       </td>
                     </tr>
                   );
