@@ -1,5 +1,5 @@
 
-import { Home, LayoutDashboard, User, ScanLine } from "lucide-react";
+import { Home, LayoutDashboard, ScanLine } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 const BottomNav = () => {
@@ -24,10 +24,7 @@ const BottomNav = () => {
                 <span className="text-xs font-medium">Dashboard</span>
             </Link>
 
-            <div className="flex flex-col items-center gap-1 transition-colors text-slate-400 hover:text-slate-200 cursor-not-allowed opacity-50">
-                <User className="w-6 h-6" />
-                <span className="text-xs font-medium">Profile</span>
-            </div>
+
         </div>
     );
 };

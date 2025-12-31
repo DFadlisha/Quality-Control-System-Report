@@ -21,12 +21,19 @@ import {
 interface SortingLog {
   id: string;
   part_no: string;
-  part_name: string;
+
   quantity_all_sorting: number;
   quantity_ng: number;
   logged_at: string;
   operator_name?: string;
   reject_image_url?: string;
+  factories?: {
+    company_name: string;
+    location: string;
+  };
+  parts_master?: {
+    part_name: string;
+  };
 }
 
 interface HourlyData {
@@ -45,11 +52,21 @@ interface HourlyOperatorOutput {
   ng_rate_percent: number;
 }
 
+
+interface ProductionStatus {
+  id: string;
+  label: string;
+  sub_label: string;
+  icon_char: string;
+  color_class: string;
+}
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [logs, setLogs] = useState<SortingLog[]>([]);
   const [hourlyData, setHourlyData] = useState<HourlyData[]>([]);
   const [hourlyOperatorData, setHourlyOperatorData] = useState<HourlyOperatorOutput[]>([]);
+  const [statusItems, setStatusItems] = useState<ProductionStatus[]>([]);
   const [stats, setStats] = useState({
     totalSorted: 0,
     totalNg: 0,
@@ -60,6 +77,7 @@ const Dashboard = () => {
   useEffect(() => {
     fetchLogs();
     fetchHourlyOperatorOutput();
+    fetchStatusItems();
     const channel = supabase
       .channel("sorting-logs-changes")
       .on(
@@ -81,17 +99,37 @@ const Dashboard = () => {
     };
   }, []);
 
+  const fetchStatusItems = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("production_status")
+        .select("*")
+        .order("sort_order", { ascending: true });
+
+      if (error) throw error;
+      if (data) {
+        setStatusItems(data as ProductionStatus[]);
+      }
+    } catch (error) {
+      console.error("Error fetching status items:", error);
+    }
+  };
+
   const fetchLogs = async () => {
     try {
       const { data, error } = await supabase
         .from("sorting_logs")
-        .select("*")
+        .select(`
+          *, 
+          factories(company_name, location),
+          parts_master(part_name)
+        `)
         .order("logged_at", { ascending: false })
         .limit(100);
 
       if (error) throw error;
       if (data) {
-        setLogs(data);
+        setLogs(data as any); // Cast to any because the join type inference can be tricky
         processData(data);
       }
     } catch (error) {
@@ -235,7 +273,7 @@ const Dashboard = () => {
       doc.setFillColor(colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]);
       doc.rect(0, pageHeight * 0.4, pageWidth, pageHeight * 0.6, "F");
 
-      // Company Logo Area (placeholder - can be replaced with actual logo if available)
+      // Company Logo Area
       const logoY = 50;
       doc.setFillColor(colors.white[0], colors.white[1], colors.white[2]);
       doc.roundedRect(pageWidth / 2 - 30, logoY, 60, 40, 5, 5, "F");
@@ -253,57 +291,65 @@ const Dashboard = () => {
       // Subtitle
       doc.setFontSize(14);
       doc.setFont("helvetica", "normal");
-      doc.text("SIC Location - Triplus Reporting", pageWidth / 2, logoY + 85, { align: "center" });
+      doc.text("Quality Control Inspection Report", pageWidth / 2, logoY + 85, { align: "center" });
 
       // Description Box
       const descY = pageHeight * 0.45;
       doc.setFillColor(colors.white[0], colors.white[1], colors.white[2]);
-      doc.roundedRect(20, descY, pageWidth - 40, 35, 5, 5, "F");
+      doc.roundedRect(20, descY, pageWidth - 40, 45, 5, 5, "F");
 
       doc.setTextColor(colors.black[0], colors.black[1], colors.black[2]);
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
-      const description = "Mobile data capture for SIC location Triplus reporting. Streamline your hourly quality sorting activities with automated part lookup and real-time reporting.";
-      doc.text(description, pageWidth / 2, descY + 12, { align: "center", maxWidth: pageWidth - 60 });
 
-      // Key Features Section
-      const featuresY = descY + 50;
+      const factoryInfo = logs.length > 0 && logs[0].factories
+        ? `${logs[0].factories.company_name} (${logs[0].factories.location})`
+        : "SIC location";
+
+      const description = `OFFICIAL QUALITY REPORT. This document details the inspection results from the mobile data capture system at ${factoryInfo}. All data is verified against standard operating procedures.`;
+      doc.text(description, pageWidth / 2, descY + 15, { align: "center", maxWidth: pageWidth - 60 });
+
+      // Key Features / Requirements Section
+      const featuresY = descY + 60;
       doc.setFontSize(16);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
-      doc.text("Key Features", pageWidth / 2, featuresY, { align: "center" });
+      doc.text("Inspection Requirements & Standards", pageWidth / 2, featuresY, { align: "center" });
 
-      // Feature boxes
+      // Requirement boxes
       const featureBoxY = featuresY + 15;
       const featureWidth = (pageWidth - 60) / 3;
 
-      // Feature 1: Automated Lookup
-      doc.setFillColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+      // Req 1
+      doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
       doc.roundedRect(20, featureBoxY, featureWidth, 40, 3, 3, "F");
       doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      doc.text("Automated Lookup", 20 + featureWidth / 2, featureBoxY + 8, { align: "center" });
-      doc.setFontSize(8);
+      doc.text("Visual Check", 20 + featureWidth / 2, featureBoxY + 15, { align: "center" });
+      doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
-      doc.text("Part names automatically", 20 + featureWidth / 2, featureBoxY + 18, { align: "center" });
-      doc.text("retrieved from database", 20 + featureWidth / 2, featureBoxY + 26, { align: "center" });
+      doc.text("100% Inspection", 20 + featureWidth / 2, featureBoxY + 25, { align: "center" });
 
-      // Feature 2: Real-time Updates
-      doc.setFillColor(colors.secondary[0], colors.secondary[1], colors.secondary[2]);
+      // Req 2
+      doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
       doc.roundedRect(20 + featureWidth + 10, featureBoxY, featureWidth, 40, 3, 3, "F");
-      doc.text("Real-time Updates", 20 + featureWidth + 10 + featureWidth / 2, featureBoxY + 8, { align: "center" });
-      doc.setFontSize(8);
-      doc.text("Instant synchronization", 20 + featureWidth + 10 + featureWidth / 2, featureBoxY + 18, { align: "center" });
-      doc.text("with live dashboard", 20 + featureWidth + 10 + featureWidth / 2, featureBoxY + 26, { align: "center" });
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("NG Limit", 20 + featureWidth + 10 + featureWidth / 2, featureBoxY + 15, { align: "center" });
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.text("Max 3.0% Rate", 20 + featureWidth + 10 + featureWidth / 2, featureBoxY + 25, { align: "center" });
 
-      // Feature 3: NG Rate Tracking
-      doc.setFillColor(colors.warning[0], colors.warning[1], colors.warning[2]);
+      // Req 3
+      doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
       doc.roundedRect(20 + (featureWidth + 10) * 2, featureBoxY, featureWidth, 40, 3, 3, "F");
-      doc.text("NG Rate Tracking", 20 + (featureWidth + 10) * 2 + featureWidth / 2, featureBoxY + 8, { align: "center" });
-      doc.setFontSize(8);
-      doc.text("Monitor quality trends", 20 + (featureWidth + 10) * 2 + featureWidth / 2, featureBoxY + 18, { align: "center" });
-      doc.text("and prevent issues", 20 + (featureWidth + 10) * 2 + featureWidth / 2, featureBoxY + 26, { align: "center" });
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("Part Verification", 20 + (featureWidth + 10) * 2 + featureWidth / 2, featureBoxY + 15, { align: "center" });
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.text("Database Match", 20 + (featureWidth + 10) * 2 + featureWidth / 2, featureBoxY + 25, { align: "center" });
 
       // System Information Box
       const infoY = featureBoxY + 55;
@@ -313,13 +359,12 @@ const Dashboard = () => {
       doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      doc.text("System Information", 30, infoY + 8);
+      doc.text("Declaration", 30, infoY + 8);
 
       doc.setTextColor(colors.darkGray[0], colors.darkGray[1], colors.darkGray[2]);
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
-      doc.text("This system integrates barcode scanning with automated database lookup to reduce", 30, infoY + 18, { maxWidth: pageWidth - 60 });
-      doc.text("manual input and enable timely hourly reports. All entries are timestamped and stored in real-time.", 30, infoY + 25, { maxWidth: pageWidth - 60 });
+      doc.text("All items processed have been scanned and verified against the master database. NG items are segregated and logged in accordance with quality control protocols.", 30, infoY + 18, { maxWidth: pageWidth - 60 });
 
       // Report Date
       doc.setFontSize(10);
@@ -456,11 +501,13 @@ const Dashboard = () => {
       doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
-      doc.text("Recent Logs", 18, yPosition);
+      doc.text("Scan Inspection Logs", 18, yPosition);
       yPosition += 12;
 
       const recentLogsData = logs.slice(0, 30).map((log) => {
         const ngRate = (log.quantity_ng / log.quantity_all_sorting) * 100;
+        const status = ngRate <= 3 ? "PASS" : "REVIEW";
+        const partName = log.parts_master?.part_name || "";
         return [
           new Date(log.logged_at).toLocaleString("en-US", {
             month: "short",
@@ -470,17 +517,18 @@ const Dashboard = () => {
           }),
           log.operator_name || "N/A",
           log.part_no,
-          log.part_name.substring(0, 25), // Truncate long names
+          partName.substring(0, 20),
           log.quantity_all_sorting.toString(),
           log.quantity_ng.toString(),
           `${ngRate.toFixed(1)}%`,
+          status,
           log.reject_image_url || "",
         ];
       });
 
       (doc as any).autoTable({
         startY: yPosition,
-        head: [["Time", "Operator Name", "Part Number", "Part Name", "Quantity All Sorting", "Quantity NG", "NG Rate", "Reject Image"]],
+        head: [["Time", "Operator", "Part No", "Part Name", "Qty", "NG", "Rate", "Status", "Image"]],
         body: recentLogsData,
         theme: "striped",
         headStyles: {
@@ -497,36 +545,37 @@ const Dashboard = () => {
           fillColor: [colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]],
         },
         styles: {
-          cellPadding: 2.5,
+          cellPadding: 2,
           lineWidth: 0.1,
           lineColor: [200, 200, 200],
         },
         margin: { left: 14, right: 14 },
         columnStyles: {
-          1: { fontStyle: "bold", cellWidth: 25 },
-          2: { fontFamily: "courier", cellWidth: 35 },
-          4: { halign: "right", cellWidth: 25 },
-          5: { halign: "right", cellWidth: 20, textColor: [colors.danger[0], colors.danger[1], colors.danger[2]] },
-          6: { halign: "right", cellWidth: 20 },
-          7: { halign: "center", cellWidth: 25 },
+          0: { cellWidth: 22 },
+          1: { fontStyle: "bold", cellWidth: 20 },
+          2: { fontFamily: "courier", cellWidth: 25 },
+          3: { cellWidth: 30 },
+          4: { halign: "right", cellWidth: 15 },
+          5: { halign: "right", cellWidth: 15, textColor: [colors.danger[0], colors.danger[1], colors.danger[2]] },
+          6: { halign: "right", cellWidth: 15 },
+          7: { halign: "center", cellWidth: 18, fontStyle: "bold" },
+          8: { halign: "center", cellWidth: 20 },
         },
         didParseCell: (data: any) => {
           // Add link to Image column
-          if (data.column.index === 7 && data.cell.raw) {
-            data.cell.link = data.cell.raw;
-            data.cell.text = ["View Image"];
+          if (data.column.index === 8 && data.cell.raw) {
+            (data.cell as any).link = data.cell.raw;
+            data.cell.text = ["View"];
             data.cell.styles.textColor = [colors.secondary[0], colors.secondary[1], colors.secondary[2]];
           }
 
-          // Color code NG Rate column
-          if (data.column.index === 6 && data.row.index >= 0) {
-            const ngRate = parseFloat(data.cell.text[0].replace('%', ''));
-            if (ngRate > 5) {
+          // Color code Status column
+          if (data.column.index === 7 && data.section === 'body') {
+            const status = data.cell.text[0];
+            if (status === "PASS") {
+              data.cell.styles.textColor = [colors.accent[0], colors.accent[1], colors.accent[2]];
+            } else {
               data.cell.styles.textColor = [colors.danger[0], colors.danger[1], colors.danger[2]];
-              data.cell.styles.fontStyle = "bold";
-            } else if (ngRate > 2) {
-              data.cell.styles.textColor = [colors.warning[0], colors.warning[1], colors.warning[2]];
-              data.cell.styles.fontStyle = "bold";
             }
           }
         },
@@ -558,7 +607,7 @@ const Dashboard = () => {
       doc.setFontSize(7);
       doc.setFont("helvetica", "italic");
       doc.text(
-        "Confidential - For Internal Use Only",
+        "Confidential - For Internal Use Only. This report contains proprietary data.",
         pageWidth / 2,
         pageHeight - 7,
         { align: "center" }
@@ -566,7 +615,7 @@ const Dashboard = () => {
     }
 
     // Save the PDF
-    const fileName = `Quality_Sorting_Report_${new Date().toISOString().split("T")[0]}.pdf`;
+    const fileName = `Quality_Report_${new Date().toISOString().split("T")[0]}.pdf`;
     doc.save(fileName);
   };
 
@@ -665,26 +714,22 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Horizontal Scroll List (Simulating 'Bills Due' / Status) */}
+        {/* Horizontal Scroll List (Now Dynamic) */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-bold text-white">Shift Status</h3>
-            <MoreHorizontal className="text-slate-400 w-5 h-5" />
+            {/* <MoreHorizontal className="text-slate-400 w-5 h-5" /> */} {/* This line was commented out in the original, keeping it that way */}
           </div>
 
           <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-            {[
-              { label: "Shift A", sub: "Active", icon: "A", color: "bg-rose-500" },
-              { label: "Housing", sub: "High Priority", icon: "H", color: "bg-amber-500" },
-              { label: "Bracket", sub: "Normal", icon: "B", color: "bg-blue-500" },
-            ].map((item, i) => (
-              <div key={i} className="min-w-[150px] bg-[#1e293b]/50 backdrop-blur-md rounded-3xl border border-white/5 p-4 flex items-center gap-3 shadow-lg hover:scale-105 transition-transform">
-                <div className={`w-10 h-10 rounded-full ${item.color} flex items-center justify-center text-white font-bold shadow-lg`}>
-                  {item.icon}
+            {statusItems.map((item) => (
+              <div key={item.id} className="min-w-[150px] bg-[#1e293b]/50 backdrop-blur-md rounded-3xl border border-white/5 p-4 flex items-center gap-3 shadow-lg hover:scale-105 transition-transform">
+                <div className={`w-10 h-10 rounded-full ${item.color_class} flex items-center justify-center text-white font-bold shadow-lg`}>
+                  {item.icon_char}
                 </div>
                 <div>
                   <p className="text-white font-semibold text-sm">{item.label}</p>
-                  <p className="text-slate-400 text-xs">{item.sub}</p>
+                  <p className="text-slate-400 text-xs">{item.sub_label}</p>
                 </div>
               </div>
             ))}
@@ -709,7 +754,6 @@ const Dashboard = () => {
             </div>
           </Button>
         </div>
-
       </div>
       <BottomNav />
     </div>
@@ -717,3 +761,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+

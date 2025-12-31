@@ -75,13 +75,26 @@ const Scan = () => {
     }
   };
 
+
+  const [factories, setFactories] = useState<{ id: string; company_name: string }[]>([]);
+  const [selectedFactory, setSelectedFactory] = useState<string>("");
+
+  useEffect(() => {
+    fetchFactories();
+  }, []);
+
+  const fetchFactories = async () => {
+    const { data } = await supabase.from("factories").select("id, company_name");
+    if (data) setFactories(data);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!partNo || !partName || !quantityAll || !quantityNg || !operatorName) {
+    if (!partNo || !partName || !quantityAll || !quantityNg || !operatorName || !selectedFactory) {
       toast({
         title: "Missing Information",
-        description: "Please fill in all fields including operator name",
+        description: "Please fill in all fields including factory location",
         variant: "destructive",
       });
       return;
@@ -97,11 +110,11 @@ const Scan = () => {
 
       const { error } = await supabase.from("sorting_logs").insert({
         part_no: partNo,
-        part_name: partName,
         quantity_all_sorting: parseInt(quantityAll),
         quantity_ng: parseInt(quantityNg),
         reject_image_url: imageUrl,
         operator_name: operatorName || null,
+        factory_id: selectedFactory,
       });
 
       if (error) throw error;
@@ -136,6 +149,7 @@ const Scan = () => {
       document.getElementById("quantity-all")?.focus();
     }
   };
+
 
   const handleBarcodeScanned = (decodedText: string) => {
     setPartNo(decodedText.trim());
@@ -173,7 +187,6 @@ const Scan = () => {
       }
     } catch (error: any) {
       console.error("Error taking picture:", error);
-      // User cancelled or error occurred
       if (error.message !== "User cancelled photos app") {
         toast({
           title: "Camera Error",
@@ -203,7 +216,6 @@ const Scan = () => {
       }
     } catch (error: any) {
       console.error("Error selecting picture:", error);
-      // User cancelled or error occurred
       if (error.message !== "User cancelled photos app") {
         toast({
           title: "Selection Error",
@@ -217,16 +229,11 @@ const Scan = () => {
   const uploadImageToSupabase = async (base64Image: string, partNo: string): Promise<string | null> => {
     try {
       setIsUploadingImage(true);
-
-      // Convert base64 to blob
       const response = await fetch(base64Image);
       const blob = await response.blob();
-
-      // Generate unique filename
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `rejects/${partNo}_${timestamp}.jpg`;
 
-      // Upload to Supabase Storage
       const { data, error } = await supabase.storage
         .from('reject-images')
         .upload(filename, blob, {
@@ -236,13 +243,12 @@ const Scan = () => {
 
       if (error) throw error;
 
-      // Get public URL
       const { data: urlData } = supabase.storage
         .from('reject-images')
         .getPublicUrl(filename);
 
       return urlData.publicUrl;
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error uploading image:", error);
       throw error;
     } finally {
