@@ -77,13 +77,44 @@ const OfflineSyncIndicator = () => {
                     imageUrl = await uploadImageToSupabase(log.reject_image_base64, log.part_no);
                 }
 
+                let finalFactoryId = log.factory_id;
+
+                // If no ID but name exists, resolve it
+                if (!finalFactoryId && log.factory_name) {
+                    const { data: existingFactory } = await supabase
+                        .from('factories')
+                        .select('id')
+                        .ilike('company_name', log.factory_name)
+                        .maybeSingle();
+
+                    if (existingFactory) {
+                        finalFactoryId = existingFactory.id;
+                    } else {
+                        // Create new factory
+                        const { data: newFactory, error: createError } = await supabase
+                            .from('factories')
+                            .insert({
+                                company_name: log.factory_name,
+                                location: log.factory_name // Default location to name
+                            })
+                            .select('id')
+                            .single();
+
+                        if (!createError && newFactory) {
+                            finalFactoryId = newFactory.id;
+                        }
+                    }
+                }
+
                 const { error } = await supabase.from("sorting_logs").insert({
                     part_no: log.part_no,
                     quantity_all_sorting: log.quantity_all_sorting,
                     quantity_ng: log.quantity_ng,
                     operator_name: log.operator_name,
-                    factory_id: log.factory_id,
+                    factory_id: finalFactoryId,
                     reject_image_url: imageUrl,
+                    // @ts-ignore casting to any because ng_type might not be in the generated types yet
+                    ng_type: log.ng_type,
                     logged_at: log.timestamp, // Preserve original timestamp
                 });
 

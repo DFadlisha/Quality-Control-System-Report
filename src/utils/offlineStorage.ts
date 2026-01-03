@@ -13,6 +13,8 @@ export interface OfflineLog {
     quantity_ng: number;
     operator_name: string | null;
     factory_id: string | null;
+    factory_name?: string; // If ID is not available (e.g. new factory entered manually)
+    ng_type?: string; // Type of NG defect
     // We store the base64 image here. 
     // Warning: localStorage has 5MB limit. Storing many high-res images will fail.
     // We recommend using low-res base64 or just not storing images offline in this MVP.

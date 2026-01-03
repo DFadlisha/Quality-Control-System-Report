@@ -10,13 +10,8 @@ import { ScanLine, Keyboard, ArrowLeft, Check, Camera, X, Upload } from "lucide-
 import BarcodeScanner from "@/components/BarcodeScanner";
 import { Camera as CapacitorCamera, CameraResultType, CameraSource } from "@capacitor/camera";
 import BottomNav from "@/components/BottomNav";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+// Select imports removed
+
 
 import { saveOfflineLog } from "@/utils/offlineStorage";
 import OfflineSyncIndicator from "@/components/OfflineSyncIndicator";
@@ -29,6 +24,7 @@ const Scan = () => {
   const [partName, setPartName] = useState("");
   const [quantityAll, setQuantityAll] = useState("");
   const [quantityNg, setQuantityNg] = useState("");
+  const [ngType, setNgType] = useState(""); // New state for NG Type
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [rejectImage, setRejectImage] = useState<string | null>(null);
@@ -86,22 +82,16 @@ const Scan = () => {
   };
 
 
-  const [factories, setFactories] = useState<{ id: string; company_name: string }[]>([]);
-  const [selectedFactory, setSelectedFactory] = useState<string>("");
 
-  useEffect(() => {
-    fetchFactories();
-  }, []);
+  const [factoryName, setFactoryName] = useState("");
 
-  const fetchFactories = async () => {
-    const { data } = await supabase.from("factories").select("id, company_name");
-    if (data) setFactories(data);
-  };
+  // Factories fetching removed in favor of manual entry + auto-resolve
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!partNo || !partName || !quantityAll || !quantityNg || !operatorName || !selectedFactory) {
+    if (!partNo || !partName || !quantityAll || !quantityNg || !operatorName || !factoryName) {
       toast({
         title: "Missing Information",
         description: "Please fill in all fields including factory location",
@@ -120,8 +110,10 @@ const Scan = () => {
         part_no: partNo,
         quantity_all_sorting: parseInt(quantityAll),
         quantity_ng: parseInt(quantityNg),
+        ng_type: ngType,
         operator_name: operatorName || null,
-        factory_id: selectedFactory,
+        factory_id: null, // No ID when offline usually, or we don't know it yet
+        factory_name: factoryName,
         reject_image_base64: rejectImage, // Save the base64 string
       });
 
@@ -147,6 +139,7 @@ const Scan = () => {
       setPartName("");
       setQuantityAll("");
       setQuantityNg("");
+      setNgType("");
       setRejectImage(null);
     }
 
@@ -164,13 +157,41 @@ const Scan = () => {
         didUploadImage = true;
       }
 
+      // Resolve Factory ID (Find or Create)
+      let finalFactoryId = null;
+
+      const { data: existingFactory } = await supabase
+        .from('factories')
+        .select('id')
+        .ilike('company_name', factoryName)
+        .maybeSingle();
+
+      if (existingFactory) {
+        finalFactoryId = existingFactory.id;
+      } else {
+        // Create new factory
+        const { data: newFactory, error: createError } = await supabase
+          .from('factories')
+          .insert({
+            company_name: factoryName,
+            location: factoryName // Default location to name
+          })
+          .select('id')
+          .single();
+
+        if (createError) throw createError;
+        finalFactoryId = newFactory.id;
+      }
+
       const { error } = await supabase.from("sorting_logs").insert({
         part_no: partNo,
         quantity_all_sorting: parseInt(quantityAll),
         quantity_ng: parseInt(quantityNg),
         reject_image_url: imageUrl,
         operator_name: operatorName || null,
-        factory_id: selectedFactory,
+        factory_id: finalFactoryId,
+        // @ts-ignore casting to any because ng_type might not be in the generated types yet
+        ng_type: ngType,
       });
 
       if (error) throw error;
@@ -395,18 +416,14 @@ const Scan = () => {
               <Label htmlFor="factory" className="text-lg font-semibold">
                 Factory Location <span className="text-destructive">*</span>
               </Label>
-              <Select value={selectedFactory} onValueChange={setSelectedFactory}>
-                <SelectTrigger className="h-14 text-lg">
-                  <SelectValue placeholder="Select Factory" />
-                </SelectTrigger>
-                <SelectContent>
-                  {factories.map((factory) => (
-                    <SelectItem key={factory.id} value={factory.id}>
-                      {factory.company_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                id="factory"
+                type="text"
+                placeholder="Enter factory name/location"
+                value={factoryName}
+                onChange={(e) => setFactoryName(e.target.value)}
+                className="text-lg h-14"
+              />
             </div>
 
             {/* Part Number */}
@@ -437,10 +454,10 @@ const Scan = () => {
                   id="part-name"
                   type="text"
                   value={partName}
-                  readOnly
+                  onChange={(e) => setPartName(e.target.value)}
                   className={`text-lg h-14 ${partName ? "bg-success/10 border-success" : "bg-muted"
                     }`}
-                  placeholder={isLookingUp ? "Looking up..." : "Auto-filled from database"}
+                  placeholder="Enter or scan part name"
                 />
                 {partName && (
                   <Check className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-success" />
@@ -461,7 +478,6 @@ const Scan = () => {
                 value={quantityAll}
                 onChange={(e) => setQuantityAll(e.target.value)}
                 className="text-lg h-14"
-                disabled={!partName}
               />
             </div>
 
@@ -476,9 +492,22 @@ const Scan = () => {
                 min="0"
                 placeholder="Enter NG quantity"
                 value={quantityNg}
-                onChange={(e) => setQuantityNg(e.target.value)}
                 className="text-lg h-14"
-                disabled={!partName}
+              />
+            </div>
+
+            {/* NG Type */}
+            <div className="space-y-2">
+              <Label htmlFor="ng-type" className="text-lg font-semibold">
+                NG Type (Defect Description)
+              </Label>
+              <Input
+                id="ng-type"
+                type="text"
+                placeholder="e.g. Scratch, Dent, Color Mismatch"
+                value={ngType}
+                onChange={(e) => setNgType(e.target.value)}
+                className="text-lg h-14"
               />
             </div>
 
@@ -514,7 +543,7 @@ const Scan = () => {
                       variant="outline"
                       className="flex-1"
                       onClick={takePicture}
-                      disabled={!partName || isUploadingImage}
+                      disabled={isUploadingImage}
                     >
                       <Camera className="h-4 w-4 mr-2" />
                       Take Photo
@@ -524,7 +553,7 @@ const Scan = () => {
                       variant="outline"
                       className="flex-1"
                       onClick={selectPicture}
-                      disabled={!partName || isUploadingImage}
+                      disabled={isUploadingImage}
                     >
                       <Upload className="h-4 w-4 mr-2" />
                       Choose Photo
