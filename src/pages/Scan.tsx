@@ -31,9 +31,36 @@ const Scan = () => {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isNgScanning, setIsNgScanning] = useState(false);
   const [operatorName, setOperatorName] = useState<string>(() => {
-    // Load operator name from localStorage if available
     return localStorage.getItem('operator_name') || '';
   });
+  const [showOperatorSuggestions, setShowOperatorSuggestions] = useState(false);
+  const [pastOperators, setPastOperators] = useState<string[]>([]);
+
+  // Fetch unique operators for suggestions
+  useEffect(() => {
+    const fetchOperators = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('sorting_logs')
+          .select('operator_name')
+          .not('operator_name', 'is', null)
+          .order('logged_at', { ascending: false })
+          .limit(100); // Get recent logs to find active operators
+
+        if (error) throw error;
+
+        if (data) {
+          // Extract unique names
+          const names = Array.from(new Set(data.map(d => d.operator_name).filter(n => n))).sort();
+          setPastOperators(names as string[]);
+        }
+      } catch (err) {
+        console.error("Failed to fetch operators", err);
+      }
+    };
+
+    fetchOperators();
+  }, []);
 
   // Auto-lookup part when part number is entered
   useEffect(() => {
@@ -392,24 +419,52 @@ const Scan = () => {
         <Card className="p-6 bg-[#1e293b]/50 backdrop-blur-md border-white/5 text-white">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Operator Name */}
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
               <Label htmlFor="operator-name" className="text-lg font-semibold">
                 Operator Name <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="operator-name"
                 type="text"
-                placeholder="Enter your name"
+                placeholder="Enter or select operator"
                 value={operatorName}
+                onFocus={() => setShowOperatorSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowOperatorSuggestions(false), 200)} // Delay to allow click
                 onChange={(e) => {
-                  const name = e.target.value.trim();
+                  const name = e.target.value;
                   setOperatorName(name);
-                  // Save to localStorage for next time
                   localStorage.setItem('operator_name', name);
                 }}
                 className="text-lg h-14 bg-black"
                 required
+                autoComplete="off"
               />
+              {/* Operator Suggestions */}
+              {showOperatorSuggestions && pastOperators.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-[#1e293b] border border-white/20 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                  {pastOperators
+                    .filter(op => op.toLowerCase().includes(operatorName.toLowerCase()))
+                    .map((op, idx) => (
+                      <div
+                        key={idx}
+                        className="px-4 py-3 text-white hover:bg-blue-600 cursor-pointer border-b border-white/5 last:border-0"
+                        onMouseDown={(e) => {
+                          e.preventDefault(); // Prevent blur
+                          setOperatorName(op);
+                          localStorage.setItem('operator_name', op);
+                          setShowOperatorSuggestions(false);
+                        }}
+                      >
+                        {op}
+                      </div>
+                    ))}
+                  {pastOperators.filter(op => op.toLowerCase().includes(operatorName.toLowerCase())).length === 0 && (
+                    <div className="px-4 py-3 text-slate-400 italic text-sm">
+                      Type to add new operator...
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Factory Selection */}

@@ -225,7 +225,24 @@ const Dashboard = () => {
   // ...
 
   // inside Dashboard component:
-  const exportToPDF = () => {
+  const getDataUrl = (url: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.src = url;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/jpeg"));
+      };
+      img.onerror = () => resolve(""); // Resolve empty string on error to continue
+    });
+  };
+
+  const exportToPDF = async () => {
     console.log("Starting PDF generation...");
     try {
       if (typeof autoTable !== 'function') {
@@ -241,275 +258,254 @@ const Dashboard = () => {
         return;
       }
 
+      toast({
+        title: "Generating Report",
+        description: "Creating formal report...",
+      });
+
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
 
-      // Professional color scheme
-      const colors = {
-        primary: [30, 58, 138],      // Deep blue
-        secondary: [59, 130, 246],   // Bright blue
-        accent: [16, 185, 129],      // Green
-        danger: [239, 68, 68],       // Red
-        warning: [245, 158, 11],     // Orange
-        lightGray: [243, 244, 246],  // Light gray
-        darkGray: [107, 114, 128],   // Dark gray
-        white: [255, 255, 255],
-        black: [0, 0, 0],
+      // Formal Grayscale Theme
+      const theme = {
+        text: [0, 0, 0], // Black
+        line: [0, 0, 0],
+        headerFill: [240, 240, 240], // Very light gray for table headers
       };
 
-      const addHeader = (yPos: number) => {
-        // Header background
-        doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
-        doc.rect(0, 0, pageWidth, 40, "F");
+      // --- Data Aggregation (Same as before) ---
+      const partSummaryMap = new Map<string, { partName: string, supplier: string, total: number, ng: number, ok: number }>();
+      logs.forEach(log => {
+        const partName = log.parts_master?.part_name || "Unknown Part";
+        const supplier = log.factories?.company_name || "Unknown Supplier";
+        const key = `${partName}-${supplier}`;
+        const existing = partSummaryMap.get(key) || { partName, supplier, total: 0, ng: 0, ok: 0 };
+        existing.total += log.quantity_all_sorting;
+        existing.ng += log.quantity_ng;
+        existing.ok += (log.quantity_all_sorting - log.quantity_ng);
+        partSummaryMap.set(key, existing);
+      });
+      const partSummaryData = Array.from(partSummaryMap.values());
 
-        // Report Title
-        doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
-        doc.setFontSize(22);
-        doc.setFont("helvetica", "bold");
-        doc.text("Quality Sorting Inspection Report", pageWidth / 2, 20, { align: "center" });
+      const rejectTypeMap = new Map<string, { count: number, imageUrls: string[] }>();
+      logs.forEach(log => {
+        if (log.quantity_ng > 0) {
+          const type = log.ng_type || "Uncategorized";
+          const existing = rejectTypeMap.get(type) || { count: 0, imageUrls: [] };
+          existing.count += log.quantity_ng;
+          if (log.reject_image_url) existing.imageUrls.push(log.reject_image_url);
+          rejectTypeMap.set(type, existing);
+        }
+      });
 
-        // Subtitle / Date
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.text(
-          `Generated: ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}`,
-          pageWidth / 2,
-          30,
-          { align: "center" }
-        );
+      const rejectTableDataWithImages: any[] = [];
+      for (const [type, data] of rejectTypeMap.entries()) {
+        const lastImage = data.imageUrls.length > 0 ? data.imageUrls[0] : null;
+        let base64Img = "";
+        if (lastImage) {
+          try {
+            base64Img = await getDataUrl(lastImage);
+          } catch (e) {
+            console.error("Failed to load image", e);
+          }
+        }
+        rejectTableDataWithImages.push({
+          type,
+          count: data.count,
+          percentage: (data.count / stats.totalNg * 100).toFixed(1),
+          image: base64Img
+        });
+      }
 
-        // Reset text color
-        doc.setTextColor(colors.black[0], colors.black[1], colors.black[2]);
-        return yPos + 50;
-      };
+      // --- PDF Drawing (Compact & Formal) ---
+      let yPosition = 15;
 
-      const addStatBox = (x: number, y: number, width: number, height: number, label: string, value: string, color: number[]) => {
-        // Box background with gradient effect
-        doc.setFillColor(color[0], color[1], color[2]);
-        doc.setDrawColor(color[0] - 20, color[1] - 20, color[2] - 20);
-        doc.setLineWidth(0.5);
-        doc.roundedRect(x, y, width, height, 3, 3, "FD");
-
-        // Label
-        doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-        doc.text(label, x + width / 2, y + 8, { align: "center" });
-
-        // Value
-        doc.setFontSize(16);
-        doc.setFont("helvetica", "bold");
-        doc.text(value, x + width / 2, y + 18, { align: "center" });
-
-        // Reset text color
-        doc.setTextColor(colors.black[0], colors.black[1], colors.black[2]);
-      };
-
-      // Start Content (No Cover Page)
-      let yPosition = addHeader(0);
-
-      // Summary Statistics Section with colored boxes
-      doc.setFontSize(14);
+      // 1. Title Header (Simple)
       doc.setFont("helvetica", "bold");
-      doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
-      doc.text("Summary Statistics", 14, yPosition);
-      yPosition += 12;
+      doc.setFontSize(16);
+      doc.setTextColor(0, 0, 0);
+      doc.text("QUALITY SORTING INSPECTION REPORT", pageWidth / 2, yPosition, { align: "center" });
 
-      // Calculate box dimensions
-      const boxWidth = (pageWidth - 28 - 12) / 4; // 4 boxes with spacing
-      const boxHeight = 25;
-      const boxSpacing = 4;
+      yPosition += 8;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Generated: ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}`, pageWidth / 2, yPosition, { align: "center" });
 
-      // Stat boxes
-      addStatBox(14, yPosition, boxWidth, boxHeight, "Total Sorted", stats.totalSorted.toLocaleString(), colors.secondary);
-      addStatBox(14 + boxWidth + boxSpacing, yPosition, boxWidth, boxHeight, "Total NG", stats.totalNg.toLocaleString(), colors.danger);
+      yPosition += 10;
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.5);
+      doc.line(14, yPosition, pageWidth - 14, yPosition);
+      yPosition += 10;
 
-      const ngRateColor = stats.ngRate > 5 ? colors.danger : stats.ngRate > 2 ? colors.warning : colors.accent;
-      addStatBox(14 + (boxWidth + boxSpacing) * 2, yPosition, boxWidth, boxHeight, "NG Rate", `${stats.ngRate.toFixed(2)}%`, ngRateColor);
-      addStatBox(14 + (boxWidth + boxSpacing) * 3, yPosition, boxWidth, boxHeight, "Parts Processed", stats.partsProcessed.toString(), colors.accent);
+      // 2. Summary Statistics (Compact Table)
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("1. EXECUTIVE SUMMARY", 14, yPosition);
+      yPosition += 5;
 
-      yPosition += boxHeight + 8; // Reduced spacing
+      autoTable(doc, {
+        startY: yPosition,
+        head: [["Total Sorted", "Total NG", "NG Rate", "Parts Processed", "Overall Status"]],
+        body: [[
+          stats.totalSorted.toLocaleString(),
+          stats.totalNg.toLocaleString(),
+          `${stats.ngRate.toFixed(2)}%`,
+          stats.partsProcessed.toString(),
+          stats.ngRate > 3 ? "ACTION REQUIRED" : "WITHIN LIMITS"
+        ]],
+        theme: "plain", // No colors
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.1,
+          halign: "center"
+        },
+        headStyles: {
+          fontStyle: "bold",
+          fillColor: [240, 240, 240] // Light gray header
+        }
+      });
 
-      // Hourly Operator Output Table
-      if (hourlyOperatorData.length > 0) {
-        // Section header with background
-        doc.setFillColor(colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]);
-        doc.rect(14, yPosition - 4, pageWidth - 28, 6, "F");
+      yPosition = (doc as any).lastAutoTable.finalY + 8;
 
-        doc.setFontSize(11); // Smaller header
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
-        doc.text("Top Operator Performance (Last 5 Active)", 16, yPosition);
-        yPosition += 8;
+      // 3. Production by Part & Supplier
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("2. PRODUCTION SUMMARY (BY PART & SUPPLIER)", 14, yPosition);
+      yPosition += 5;
 
-        const operatorTableData = hourlyOperatorData.slice(0, 5).map((row, index) => [ // Limit to 5
-          row.operator_name,
-          new Date(row.hour).toLocaleString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          row.total_logs.toString(),
-          row.total_sorted.toString(),
-          row.total_ng.toString(),
-          `${row.ng_rate_percent.toFixed(1)}%`,
+      const summaryTableData = partSummaryData.map(d => [
+        d.partName.substring(0, 25), // Truncate if too long
+        d.supplier.substring(0, 25),
+        d.total.toLocaleString(),
+        d.ok.toLocaleString(),
+        d.ng.toLocaleString(),
+        `${(d.total > 0 ? (d.ng / d.total * 100) : 0).toFixed(2)}%`
+      ]);
+
+      autoTable(doc, {
+        startY: yPosition,
+        head: [["Part Name", "Supplier", "Total", "OK", "NG", "Rate"]],
+        body: summaryTableData,
+        theme: "grid", // Simple grid
+        styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold" },
+        columnStyles: {
+          2: { halign: 'right' },
+          3: { halign: 'right' },
+          4: { halign: 'right' },
+          5: { halign: 'right' }
+        }
+      });
+
+      yPosition = (doc as any).lastAutoTable.finalY + 8;
+
+      // 4. Reject Type Analysis (Side by Side with Operator data if possible, or stacked compactly)
+      // Let's stack them but tight.
+
+      if (rejectTableDataWithImages.length > 0) {
+        doc.setFontSize(11);
+        doc.text("3. DEFECT ANALYSIS", 14, yPosition);
+        yPosition += 5;
+
+        // Two columns layout simulation? No, just list.
+        const rejectBody = rejectTableDataWithImages.map(r => [
+          r.type,
+          r.count,
+          `${r.percentage}%`,
+          "" // Image placeholder
         ]);
 
         autoTable(doc, {
           startY: yPosition,
-          head: [["Operator", "Hour", "Logs", "Total Sorted", "NG", "NG Rate"]],
-          body: operatorTableData,
-          theme: "striped",
-          headStyles: {
-            fillColor: [colors.primary[0], colors.primary[1], colors.primary[2]],
-            fontStyle: "bold",
-            textColor: [255, 255, 255],
-            fontSize: 8, // Smaller header font
-            halign: 'center'
-          },
-          bodyStyles: {
-            fontSize: 7, // Compact font
-            textColor: [0, 0, 0],
-            cellPadding: 1.5,
-          },
+          head: [["Defect Type", "Qty", "%", "Visual"]],
+          body: rejectBody,
+          theme: "grid",
+          styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, minCellHeight: 12 },
+          headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0] },
           columnStyles: {
-            0: { fontStyle: "bold" },
-            2: { halign: "right" },
-            3: { halign: "right" },
-            4: { halign: "right", textColor: [colors.danger[0], colors.danger[1], colors.danger[2]] },
-            5: { halign: "right" },
+            0: { cellWidth: 40 },
+            1: { cellWidth: 20, halign: 'right' },
+            2: { cellWidth: 20, halign: 'right' },
+            3: { cellWidth: 25 }
           },
-          alternateRowStyles: {
-            fillColor: [colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]],
-          },
-          margin: { left: 14, right: 14 },
-          didParseCell: (data: any) => {
-            // Color code NG Rate column
-            if (data.column.index === 5 && data.row.index >= 0) {
-              const ngRate = parseFloat(data.cell.text[0].replace('%', ''));
-              if (ngRate > 5) {
-                data.cell.styles.textColor = [colors.danger[0], colors.danger[1], colors.danger[2]];
-                data.cell.styles.fontStyle = "bold";
+          didDrawCell: (data) => {
+            if (data.column.index === 3 && data.section === 'body') {
+              const rowIndex = data.row.index;
+              const imgData = rejectTableDataWithImages[rowIndex].image;
+              if (imgData) {
+                try {
+                  // Smaller image to fit in row
+                  doc.addImage(imgData, 'JPEG', data.cell.x + 2, data.cell.y + 1, 10, 10);
+                } catch (err) { }
               }
             }
           }
         });
 
-        yPosition = (doc as any).lastAutoTable.finalY + 10; // Reduced spacing
+        yPosition = (doc as any).lastAutoTable.finalY + 8;
       }
 
-      // Recent Logs Table
-      if (logs.length > 0) {
-        // Section header with background
-        doc.setFillColor(colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]);
-        doc.rect(14, yPosition - 4, pageWidth - 28, 6, "F");
+      // Check for page break needed
+      if (yPosition > pageHeight - 60) {
+        doc.addPage();
+        yPosition = 20;
+      }
 
+      // 5. Detailed Logs (Compact)
+      if (logs.length > 0) {
         doc.setFontSize(11);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
-        doc.text("Recent Scans (Last 10)", 16, yPosition);
-        yPosition += 8;
+        doc.text("4. DETAILED LOGS (LAST 25)", 14, yPosition);
+        yPosition += 5;
 
-        const recentLogsData = logs.slice(0, 10).map((log) => { // Limit to 10
+        const recentLogsData = logs.slice(0, 25).map((log) => {
           const ngRate = (log.quantity_ng / log.quantity_all_sorting) * 100;
-          const status = ngRate <= 3 ? "PASS" : "REVIEW";
-          const partName = log.parts_master?.part_name || "";
           return [
-            new Date(log.logged_at).toLocaleString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-            log.operator_name || "N/A",
-            log.part_no,
-            partName.substring(0, 12),
-            log.quantity_all_sorting.toString(),
-            log.quantity_ng.toString(),
-            `${ngRate.toFixed(1)}%`,
-            status,
-            log.reject_image_url ? "Link" : "",
+            new Date(log.logged_at).toLocaleString("en-US", { month: 'numeric', day: 'numeric', hour: "2-digit", minute: "2-digit", hour12: false }),
+            log.parts_master?.part_name || log.part_no,
+            log.factories?.company_name || "-",
+            log.quantity_all_sorting,
+            log.quantity_ng,
+            log.ng_type || "-",
+            `${ngRate.toFixed(1)}%`
           ];
         });
 
         autoTable(doc, {
           startY: yPosition,
-          head: [["Time", "Op", "Part No", "Part Name", "Qty", "NG", "Rate", "Status", "Img"]],
+          head: [["Time", "Part", "Supplier", "Total", "NG", "Type", "Rate"]],
           body: recentLogsData,
-          theme: "striped",
-          headStyles: {
-            fillColor: [colors.primary[0], colors.primary[1], colors.primary[2]],
-            fontStyle: "bold",
-            textColor: [255, 255, 255],
-            fontSize: 8,
-            halign: 'center'
-          },
-          bodyStyles: {
-            fontSize: 7,
-            textColor: [0, 0, 0],
-            cellPadding: 1.5,
-          },
+          theme: "grid",
+          styles: { fontSize: 7, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, overflow: 'ellipsize' },
+          headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0] },
           columnStyles: {
-            4: { halign: "right" },
-            5: { halign: "right", textColor: [colors.danger[0], colors.danger[1], colors.danger[2]] },
-            6: { halign: "right" },
-            7: { halign: "center", fontStyle: "bold" },
-            8: { halign: "center", textColor: [colors.secondary[0], colors.secondary[1], colors.secondary[2]] }
-          },
-          alternateRowStyles: {
-            fillColor: [colors.lightGray[0], colors.lightGray[1], colors.lightGray[2]],
-          },
-          margin: { left: 14, right: 14 },
-          didParseCell: (data: any) => {
-            if (data.column.index === 8 && data.cell.raw) {
-              (data.cell as any).link = logs[data.row.index].reject_image_url;
-            }
-            if (data.column.index === 7 && data.section === 'body') {
-              const status = data.cell.text[0];
-              if (status === "PASS") data.cell.styles.textColor = [colors.accent[0], colors.accent[1], colors.accent[2]];
-              else data.cell.styles.textColor = [colors.danger[0], colors.danger[1], colors.danger[2]];
-            }
+            0: { cellWidth: 25 },
+            3: { halign: "right", cellWidth: 15 },
+            4: { halign: "right", cellWidth: 15 },
+            6: { halign: "right", cellWidth: 15 },
           }
         });
       }
 
-      // Professional Footer for all pages
+      // Footer
       const pageCount = (doc as any).getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
-
-        // Footer line
-        doc.setDrawColor(colors.primary[0], colors.primary[1], colors.primary[2]);
-        doc.setLineWidth(0.5);
-        doc.line(14, pageHeight - 20, pageWidth - 14, pageHeight - 20);
-
-        // Footer text (Generic)
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(colors.darkGray[0], colors.darkGray[1], colors.darkGray[2]);
-        doc.text(
-          `Quality Sorting System - Internal Report | Page ${i} of ${pageCount}`,
-          pageWidth / 2,
-          pageHeight - 12,
-          { align: "center" }
-        );
-
-        // Confidential notice
         doc.setFontSize(7);
-        doc.setFont("helvetica", "italic");
-        doc.text(
-          "Confidential - For Internal Use Only. This report contains proprietary data.",
-          pageWidth / 2,
-          pageHeight - 7,
-          { align: "center" }
-        );
+        doc.setTextColor(100);
+        doc.text(`Page ${i} of ${pageCount}`, pageWidth - 20, pageHeight - 10, { align: "right" });
+        doc.text("CONFIDENTIAL - INTERNAL USE ONLY", 14, pageHeight - 10);
       }
 
-      // Save the PDF
-      const fileName = `Quality_Report_${new Date().toISOString().split("T")[0]}.pdf`;
+      const fileName = `Formal_Report_${new Date().toISOString().split("T")[0]}.pdf`;
       doc.save(fileName);
 
       toast({
-        title: "Report Downloaded",
-        description: "Quality inspection report has been saved to your device.",
+        title: "Report Generated",
+        description: "Formal report saved.",
       });
 
     } catch (error) {
