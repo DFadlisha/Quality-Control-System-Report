@@ -1,0 +1,134 @@
+import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:myapp/models/sorting_log.dart';
+import 'package:myapp/services/firestore_service.dart';
+
+class ManagementDashboard extends StatelessWidget {
+  const ManagementDashboard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final FirestoreService firestoreService = FirestoreService();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Management Dashboard'),
+      ),
+      body: StreamBuilder<List<SortingLog>>(
+        stream: firestoreService.getSortingLogs(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No logs found.'));
+          }
+
+          final logs = snapshot.data!;
+          final totalSorted = logs.fold(0, (previousValue, log) => previousValue + log.quantitySorted);
+          final totalNg = logs.fold(0, (previousValue, log) => previousValue + log.quantityNg);
+          final ngRate = totalSorted == 0 ? 0 : (totalNg / (totalSorted + totalNg)) * 100;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildStatCard('Total Sorted', totalSorted.toString(), context),
+                    _buildStatCard('Total NG', totalNg.toString(), context),
+                    _buildStatCard('NG Rate', '${ngRate.toStringAsFixed(2)}%', context),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Text('Hourly Production Trend', style: Theme.of(context).textTheme.titleLarge),
+                SizedBox(
+                  height: 200,
+                  child: LineChart(_buildChartData(logs, context)),
+                ),
+                const SizedBox(height: 24),
+                Text('Recent Logs', style: Theme.of(context).textTheme.titleLarge),
+                _buildLogsTable(logs, context),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, BuildContext context) {
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(value, style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  LineChartData _buildChartData(List<SortingLog> logs, BuildContext context) {
+  final Map<int, double> hourlyData = {};
+  for (var log in logs) {
+    final hour = log.timestamp.toDate().hour;
+    hourlyData.update(hour, (value) => value + log.quantitySorted, ifAbsent: () => log.quantitySorted.toDouble());
+  }
+
+  final List<FlSpot> spots = hourlyData.entries.map((entry) {
+    return FlSpot(entry.key.toDouble(), entry.value);
+  }).toList();
+
+  return LineChartData(
+    lineBarsData: [
+      LineChartBarData(
+        spots: spots,
+        isCurved: true,
+        color: Theme.of(context).colorScheme.primary,
+        barWidth: 3,
+        belowBarData: BarAreaData(show: true, color: Theme.of(context).colorScheme.primary.withAlpha(50)),
+      ),
+    ],
+    titlesData: const FlTitlesData(
+      leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40)),
+      bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30)),
+      topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+    ),
+    gridData: const FlGridData(show: true),
+    borderData: FlBorderData(show: true),
+  );
+}
+
+
+  Widget _buildLogsTable(List<SortingLog> logs, BuildContext context) {
+    return DataTable(
+      columns: const [
+        DataColumn(label: Text('Operator')),
+        DataColumn(label: Text('Part Name')),
+        DataColumn(label: Text('Sorted')),
+        DataColumn(label: Text('NG')),
+      ],
+      rows: logs.take(10).map((log) {
+        return DataRow(
+          cells: [
+            DataCell(Text(log.operatorName)),
+            DataCell(Text(log.partName)),
+            DataCell(Text(log.quantitySorted.toString())),
+            DataCell(Text(log.quantityNg.toString())),
+          ],
+        );
+      }).toList(),
+    );
+  }
+}
