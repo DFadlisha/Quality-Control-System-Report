@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:myapp/models/sorting_log.dart';
 
 class FirestoreService {
@@ -29,7 +30,7 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      print('Error getting part name: $e');
+      debugPrint('Error getting part name: $e');
       return null;
     }
   }

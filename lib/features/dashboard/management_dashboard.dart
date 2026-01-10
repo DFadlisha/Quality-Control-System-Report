@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:myapp/models/sorting_log.dart';
 import 'package:myapp/services/firestore_service.dart';
+import 'package:myapp/services/pdf_report_service.dart';
 
 class ManagementDashboard extends StatelessWidget {
   const ManagementDashboard({super.key});
@@ -9,56 +10,71 @@ class ManagementDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final FirestoreService firestoreService = FirestoreService();
+    final PdfReportService pdfReportService = PdfReportService();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Management Dashboard'),
-      ),
-      body: StreamBuilder<List<SortingLog>>(
-        stream: firestoreService.getSortingLogs(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('No logs found.'));
-          }
+    return StreamBuilder<List<SortingLog>>(
+      stream: firestoreService.getSortingLogs(),
+      builder: (context, snapshot) {
+        final logs = snapshot.data ?? [];
+        
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Management Dashboard'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.picture_as_pdf),
+                tooltip: 'Export Report',
+                onPressed: logs.isEmpty
+                    ? null
+                    : () async {
+                        await pdfReportService.generateReport(logs);
+                      },
+              ),
+            ],
+          ),
+          body: () {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return const Center(child: Text('No logs found.'));
+            }
 
-          final logs = snapshot.data!;
-          final totalSorted = logs.fold(0, (previousValue, log) => previousValue + log.quantitySorted);
-          final totalNg = logs.fold(0, (previousValue, log) => previousValue + log.quantityNg);
-          final ngRate = totalSorted == 0 ? 0 : (totalNg / (totalSorted + totalNg)) * 100;
+            final totalSorted = logs.fold(0, (previousValue, log) => previousValue + log.quantitySorted);
+            final totalNg = logs.fold(0, (previousValue, log) => previousValue + log.quantityNg);
+            final ngRate = totalSorted == 0 ? 0 : (totalNg / (totalSorted + totalNg)) * 100;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildStatCard('Total Sorted', totalSorted.toString(), context),
-                    _buildStatCard('Total NG', totalNg.toString(), context),
-                    _buildStatCard('NG Rate', '${ngRate.toStringAsFixed(2)}%', context),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Text('Hourly Production Trend', style: Theme.of(context).textTheme.titleLarge),
-                SizedBox(
-                  height: 200,
-                  child: LineChart(_buildChartData(logs, context)),
-                ),
-                const SizedBox(height: 24),
-                Text('Recent Logs', style: Theme.of(context).textTheme.titleLarge),
-                _buildLogsTable(logs, context),
-              ],
-            ),
-          );
-        },
-      ),
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildStatCard('Total Sorted', totalSorted.toString(), context),
+                      _buildStatCard('Total NG', totalNg.toString(), context),
+                      _buildStatCard('NG Rate', '${ngRate.toStringAsFixed(2)}%', context),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Hourly Production Trend', style: Theme.of(context).textTheme.titleLarge),
+                  SizedBox(
+                    height: 200,
+                    child: LineChart(_buildChartData(logs, context)),
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Recent Logs', style: Theme.of(context).textTheme.titleLarge),
+                  _buildLogsTable(logs, context),
+                ],
+              ),
+            );
+          }(),
+        );
+      },
     );
   }
 

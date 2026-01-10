@@ -3,8 +3,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
-import 'package:myapp/services/auth_service.dart';
-import 'package:myapp/features/auth/login_screen.dart';
 import 'package:myapp/features/home/home_page.dart';
 import 'package:myapp/theme/theme_provider.dart';
 import 'firebase_options.dart';
@@ -18,7 +16,6 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
-        Provider<AuthService>(create: (_) => AuthService()),
       ],
       child: const SortMasterApp(),
     ),
@@ -59,6 +56,15 @@ class SortMasterApp extends StatelessWidget {
           textStyle: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.w500),
         ),
       ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.grey[100],
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey[400]!),
+        ),
+      ),
     );
 
     final ThemeData darkTheme = ThemeData(
@@ -82,6 +88,15 @@ class SortMasterApp extends StatelessWidget {
           textStyle: GoogleFonts.roboto(fontSize: 16, fontWeight: FontWeight.w500),
         ),
       ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.grey[800],
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey[600]!),
+        ),
+      ),
     );
 
     return Consumer<ThemeProvider>(
@@ -91,33 +106,7 @@ class SortMasterApp extends StatelessWidget {
           theme: lightTheme,
           darkTheme: darkTheme,
           themeMode: themeProvider.themeMode,
-          home: AuthWrapper(),
-        );
-      },
-    );
-  }
-}
-
-class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final authService = Provider.of<AuthService>(context);
-    return StreamBuilder(
-      stream: authService.authStateChanges,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.active) {
-          final user = snapshot.data;
-          if (user == null) {
-            return const LoginScreen();
-          }
-          return const HomePage();
-        }
-        return const Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(),
-          ),
+          home: const HomePage(),
         );
       },
     );
