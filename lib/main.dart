@@ -83,7 +83,7 @@ class SortMasterApp extends StatelessWidget {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            cardTheme: CardTheme(
+            cardTheme: CardThemeData(
               color: AppColors.darkCard,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
