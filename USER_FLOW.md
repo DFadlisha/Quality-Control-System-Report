@@ -1,10 +1,9 @@
-
-# SortMaster Mobile - User Flow & Test Guide
-
-## 1. Login / Pre-Check
-*   **Action**: Ensure internet connection is active (for Supabase sync).
-*   **Check**: App should open to the **Dashboard** or **Scan Page**.
-*   **Note**: Browser-based testing skips native mobile login, but ensures `.env` is correct.
+# QCSR Mobile - User Flow & Test Guide
+ 
+ ## 1. Login / Pre-Check
+ *   **Action**: Ensure internet connection is active.
+ *   **Check**: App should open to the **Dashboard** or **Scan Page**.
+ *   **Note**: Ensure `google-services.json` is correctly placed for Firebase connectivity.
 
 ## 2. Scanning & Data Entry (The "Worker" Flow)
 1.  **Navigate**: Click "Scan" in the bottom navigation.

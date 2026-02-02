@@ -69,7 +69,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '366451374914',
     projectId: 'sortmaster-app-5821',
     storageBucket: 'sortmaster-app-5821.firebasestorage.app',
-    iosBundleId: 'com.example.myapp',
+    iosBundleId: 'com.qcsr.mobile',
   );
 
 }

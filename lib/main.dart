@@ -18,13 +18,13 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
       ],
-      child: const SortMasterApp(),
+      child: const QCSRApp(),
     ),
   );
 }
 
-class SortMasterApp extends StatelessWidget {
-  const SortMasterApp({super.key});
+class QCSRApp extends StatelessWidget {
+  const QCSRApp({super.key});
 
   @override
   Widget build(BuildContext context) {

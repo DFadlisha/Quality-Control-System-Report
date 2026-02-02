@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">SortMaster</string>
-    <string name="title_activity_main">SortMaster</string>
-    <string name="package_name">com.sortmaster.mobile</string>
-    <string name="custom_url_scheme">com.sortmaster.mobile</string>
+    <string name="app_name">QCSR</string>
+    <string name="title_activity_main">QCSR</string>
+    <string name="package_name">com.qcsr.mobile</string>
+    <string name="custom_url_scheme">com.qcsr.mobile</string>
 </resources>
