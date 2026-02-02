@@ -608,7 +608,7 @@ class ManagementDashboard extends StatelessWidget {
       
       scaffoldMessenger.showSnackBar(
         SnackBar(
-          content: Text('Excel report saved to:\n$filePath'),
+          content: Text('CSV report saved to:\n$filePath'),
           duration: const Duration(seconds: 5),
           action: SnackBarAction(
             label: 'OK',
