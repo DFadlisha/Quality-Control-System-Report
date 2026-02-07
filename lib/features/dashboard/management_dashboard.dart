@@ -4,9 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:myapp/models/sorting_log.dart';
 import 'package:myapp/services/firestore_service.dart';
 import 'package:myapp/services/excel_export_service.dart';
-import 'package:myapp/services/excel_export_service.dart';
 import 'package:myapp/theme/app_colors.dart';
 import 'package:myapp/services/sample_data_service.dart';
+import 'package:myapp/features/admin/admin_utilities_page.dart';
 import 'package:printing/printing.dart'; // For sharing PDF
 import 'package:http/http.dart' as http; // For downloading PDF
 import 'dart:typed_data'; // For Uint8List
@@ -54,7 +54,10 @@ class _ManagementDashboardState extends State<ManagementDashboard> {
           return Scaffold(
             appBar: AppBar(
               elevation: 0,
-              title: const Text('QCSR - Operator Output', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              title: const FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text('QCSR - Operator Output', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
               iconTheme: const IconThemeData(color: Colors.white),
               bottom: TabBar(
                 labelColor: Colors.white,
@@ -62,10 +65,10 @@ class _ManagementDashboardState extends State<ManagementDashboard> {
                 indicatorColor: AppColors.primaryPurple,
                 indicatorWeight: 4,
                 indicatorSize: TabBarIndicatorSize.tab,
-                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), // Slightly smaller to avoid truncation
                 tabs: const [
-                  Tab(icon: Icon(Icons.analytics_outlined), text: 'OVERVIEW'),
-                  Tab(icon: Icon(Icons.speed), text: 'OPERATOR PERFORMANCE'),
+                  Tab(icon: Icon(Icons.analytics_outlined, size: 20), text: 'OVERVIEW'),
+                  Tab(icon: Icon(Icons.speed, size: 20), text: 'PERFORMANCE'), // Shortened from OPERATOR PERFORMANCE
                 ],
               ),
               actions: [
@@ -84,6 +87,27 @@ class _ManagementDashboardState extends State<ManagementDashboard> {
                     );
                   },
                 ),
+                PopupMenuButton(
+                  icon: const Icon(Icons.more_vert, color: Colors.white),
+                  tooltip: 'More Options',
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'admin',
+                      child: Row(
+                        children: [
+                          Icon(Icons.admin_panel_settings, color: Colors.red, size: 20),
+                          SizedBox(width: 8),
+                          Text('Admin Utilities'),
+                        ],
+                      ),
+                    ),
+                  ],
+                  onSelected: (value) {
+                    if (value == 'admin') {
+                      _showAdminPasswordDialog(context);
+                    }
+                  },
+                ),
               ],
             ),
             body: Container(
@@ -99,6 +123,127 @@ class _ManagementDashboardState extends State<ManagementDashboard> {
         },
       ),
     );
+  }
+
+  void _showAdminPasswordDialog(BuildContext context) {
+    final TextEditingController passwordController = TextEditingController();
+    bool obscureText = true;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: const Color(0xFF2D3561),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.lock, color: AppColors.primaryPurple, size: 28),
+              SizedBox(width: 12),
+              Text('Admin Access', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter admin password to continue:',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: passwordController,
+                obscureText: obscureText,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Password',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  prefixIcon: const Icon(Icons.vpn_key, color: AppColors.primaryPurple),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscureText ? Icons.visibility : Icons.visibility_off,
+                      color: Colors.white54,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        obscureText = !obscureText;
+                      });
+                    },
+                  ),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.1),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.primaryPurple, width: 2),
+                  ),
+                ),
+                onSubmitted: (value) {
+                  _verifyPassword(context, passwordController.text);
+                },
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '💡 Default password: admin123',
+                style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                passwordController.dispose();
+                Navigator.pop(context);
+              },
+              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _verifyPassword(context, passwordController.text);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryPurple,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Enter', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    ).then((_) => passwordController.dispose());
+  }
+
+  void _verifyPassword(BuildContext context, String password) {
+    // Default admin password - you can change this or store it securely
+    const String adminPassword = 'admin123';
+    
+    if (password == adminPassword) {
+      Navigator.pop(context); // Close password dialog
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const AdminUtilitiesPage(),
+        ),
+      );
+    } else {
+      // Show error
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Incorrect password'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Widget _buildOverviewTab(BuildContext context, AsyncSnapshot<List<SortingLog>> snapshot, List<SortingLog> logs) {
@@ -409,7 +554,7 @@ class _ManagementDashboardState extends State<ManagementDashboard> {
       lineTouchData: LineTouchData(
         touchTooltipData: LineTouchTooltipData(
           getTooltipColor: (spot) => AppColors.primaryPurple.withOpacity(0.9),
-          getTooltipItems: (spots) => spots.map((s) => LineTooltipItem('${s.y.toInt()} units', const TextStyle(color: Colors.black, fontWeight: FontWeight.bold))).toList(),
+          getTooltipItems: (spots) => spots.map((s) => LineTooltipItem('${s.y.toInt()} units', const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))).toList(),
         ),
       ),
       lineBarsData: [
@@ -443,16 +588,37 @@ class _ManagementDashboardState extends State<ManagementDashboard> {
         leftTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
-            reservedSize: 40,
-            getTitlesWidget: (val, meta) => Text(val.toInt().toString(), style: const TextStyle(color: Colors.black87, fontSize: 11, fontWeight: FontWeight.w600)),
+            reservedSize: 45,
+            getTitlesWidget: (val, meta) => Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Text(
+                val.toInt().toString(),
+                style: TextStyle(
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black87,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600
+                ),
+                textAlign: TextAlign.right,
+              ),
+            ),
           ),
         ),
         bottomTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
-            reservedSize: 30,
-            interval: 1,
-            getTitlesWidget: (val, meta) => Text('${val.toInt().toString().padLeft(2, '0')}:00', style: const TextStyle(color: Colors.black87, fontSize: 10, fontWeight: FontWeight.w600)),
+            reservedSize: 32,
+            interval: 2, // Reducing interval to avoid overlapping
+            getTitlesWidget: (val, meta) => Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Text(
+                '${val.toInt().toString().padLeft(2, '0')}:00',
+                style: TextStyle(
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.white70 : Colors.black87,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600
+                )
+              ),
+            ),
           ),
         ),
         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -461,7 +627,7 @@ class _ManagementDashboardState extends State<ManagementDashboard> {
       gridData: FlGridData(
         show: true,
         drawVerticalLine: false,
-        getDrawingHorizontalLine: (value) => FlLine(color: Colors.white.withOpacity(0.1), strokeWidth: 1),
+        getDrawingHorizontalLine: (value) => FlLine(color: Colors.white.withOpacity(0.05), strokeWidth: 1),
       ),
       borderData: FlBorderData(show: false),
     );
@@ -470,7 +636,7 @@ class _ManagementDashboardState extends State<ManagementDashboard> {
   Widget _buildLogsTable(List<SortingLog> logs, BuildContext context) {
     return DataTable(
       headingRowHeight: 45,
-      headingRowColor: WidgetStateProperty.all(Colors.white.withOpacity(0.05)),
+      headingRowColor: MaterialStateProperty.all(Colors.white.withOpacity(0.05)),
       horizontalMargin: 16,
       columnSpacing: 24,
       columns: [
@@ -497,7 +663,7 @@ class _ManagementDashboardState extends State<ManagementDashboard> {
                     const Icon(Icons.people_outline, size: 14, color: Colors.white70),
                     const SizedBox(width: 8),
                     Text(
-                      ops.length > 30 ? "${ops.substring(0, 27)}..." : ops,
+                      ops.length > 35 ? "${ops.substring(0, 32)}..." : ops,
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.white),
                     ),
                   ],
@@ -516,7 +682,7 @@ class _ManagementDashboardState extends State<ManagementDashboard> {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    ngSummary.length > 20 ? "${ngSummary.substring(0, 17)}..." : ngSummary,
+                    ngSummary.length > 30 ? "${ngSummary.substring(0, 27)}..." : ngSummary,
                     style: TextStyle(
                       color: ngSummary == "None" ? Colors.white60 : Colors.redAccent,
                       fontSize: 11,

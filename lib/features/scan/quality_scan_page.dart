@@ -90,8 +90,15 @@ class _QualityScanPageState extends State<QualityScanPage> {
           .ref()
           .child('rejected_parts')
           .child('${DateTime.now().millisecondsSinceEpoch}_${image.path.split('/').last}');
-      await storageRef.putFile(image);
-      return await storageRef.getDownloadURL();
+      
+      // Upload with timeout
+      final uploadTask = storageRef.putFile(image);
+      final snapshot = await uploadTask.timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => throw TimeoutException('Image upload timeout'),
+      );
+      
+      return await snapshot.ref.getDownloadURL();
     } catch (e) {
       developer.log('Error uploading image: $e');
       return null;
@@ -105,20 +112,23 @@ class _QualityScanPageState extends State<QualityScanPage> {
   }
 
   void _removeNgEntry(int index) {
-      setState(() {
-        _ngEntries[index].dispose();
-        _ngEntries.removeAt(index);
-      });
+    setState(() {
+      _ngEntries[index].dispose();
+      _ngEntries.removeAt(index);
+    });
   }
 
   void _submitLog() async {
     if (_formKey.currentState!.validate()) {
-      // Additional Validation: If NG Qty > 0, we must have NG entries
+      // Validation: If NG Qty > 0, we must have NG entries
       int ngQty = int.tryParse(_quantityNgController.text) ?? 0;
       if (ngQty > 0 && _ngEntries.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('NG Quantity is > 0 but no Defect Details added.\nPlease add NG entries or set NG Qty to 0.'), backgroundColor: Colors.orange),
+            const SnackBar(
+              content: Text('NG Quantity is > 0 but no Defect Details added.\nPlease add NG entries or set NG Qty to 0.'),
+              backgroundColor: Colors.orange,
+            ),
           );
         }
         return;
@@ -128,13 +138,22 @@ class _QualityScanPageState extends State<QualityScanPage> {
         _isSubmitting = true;
       });
 
+      // Store these for later use
+      Uint8List? pdfBytes;
+      bool pdfGenerated = false;
+
       try {
-        // 1. Upload Images and Prepare Details
+        // STEP 1: Upload Images (with shorter timeout)
+        developer.log('Step 1: Uploading NG images...');
         List<NgDetail> ngDetails = [];
         for (var entry in _ngEntries) {
           String? imageUrl;
           if (entry.image != null) {
-            imageUrl = await _uploadImage(entry.image!);
+            try {
+              imageUrl = await _uploadImage(entry.image!);
+            } catch (e) {
+              developer.log('Image upload failed, continuing without URL: $e');
+            }
           }
           ngDetails.add(NgDetail(
             type: entry.typeController.text,
@@ -143,8 +162,20 @@ class _QualityScanPageState extends State<QualityScanPage> {
           ));
         }
 
-        // 2. Prepare Log Data (Temp object for PDF generation)
-        final tempLog = SortingLog(
+        // STEP 2: Generate PDF (but don't wait for upload)
+        developer.log('Step 2: Generating PDF...');
+        try {
+          pdfBytes = await _buildPdfBytes();
+          pdfGenerated = true;
+          developer.log('PDF generated successfully (${pdfBytes.length} bytes)');
+        } catch (e) {
+          developer.log('PDF generation failed: $e');
+          pdfGenerated = false;
+        }
+
+        // STEP 3: Save to Firestore IMMEDIATELY (don't wait for PDF upload)
+        developer.log('Step 3: Saving log to Firestore...');
+        final finalLog = SortingLog(
           partNo: _partNoController.text,
           partName: _partNameController.text,
           quantitySorted: int.parse(_quantitySortedController.text),
@@ -155,65 +186,93 @@ class _QualityScanPageState extends State<QualityScanPage> {
           ngDetails: ngDetails,
           remarks: _remarksController.text,
           timestamp: Timestamp.now(),
+          pdfUrl: null, // We'll update this later if upload succeeds
         );
 
-        // 3. Generate PDF
-        final pdfBytes = await _buildPdfBytes();
-        
-        // 4. Upload PDF to Firebase Storage (Best Attempt)
+        // Save to Firestore first - this must succeed!
+        final docRef = await _firestoreService.addSortingLog(finalLog);
+        developer.log('Log saved to Firestore with ID: ${docRef.id}');
+
+        // STEP 4: Try PDF upload in background (non-blocking)
         String? pdfUrl;
-        try {
-          final pdfRef = FirebaseStorage.instance
-              .ref()
-              .child('reports')
-              .child('report_${DateTime.now().millisecondsSinceEpoch}.pdf');
-          
-          final uploadTask = pdfRef.putData(pdfBytes, SettableMetadata(contentType: 'application/pdf'));
-          final snapshot = await uploadTask;
-          pdfUrl = await snapshot.ref.getDownloadURL();
-        } catch (e) {
-          developer.log('PDF Upload Failed', error: e);
-          if (mounted) {
-             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Note: PDF cloud backup failed, but log saved to Database.'), backgroundColor: Colors.orange),
+        bool pdfUploaded = false;
+        
+        if (pdfGenerated && pdfBytes != null) {
+          try {
+            developer.log('Step 4: Attempting PDF upload (non-blocking)...');
+            
+            final fileName = 'report_${_partNoController.text.replaceAll(RegExp(r'[^\w\s-]'), '_')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+            final pdfRef = FirebaseStorage.instance
+                .ref()
+                .child('reports')
+                .child(fileName);
+            
+            final metadata = SettableMetadata(
+              contentType: 'application/pdf',
+              customMetadata: {
+                'partNo': _partNoController.text,
+                'uploadedAt': DateTime.now().toIso8601String(),
+                'firestoreId': docRef.id,
+              },
             );
+            
+            // Try to upload with 20 second timeout
+            final uploadTask = pdfRef.putData(pdfBytes, metadata);
+            final snapshot = await uploadTask.timeout(
+              const Duration(seconds: 20),
+              onTimeout: () {
+                developer.log('PDF upload timeout - continuing anyway');
+                throw TimeoutException('PDF upload timeout');
+              },
+            );
+            
+            pdfUrl = await snapshot.ref.getDownloadURL();
+            pdfUploaded = true;
+            developer.log('PDF uploaded successfully: $pdfUrl');
+            
+            // Update Firestore with PDF URL
+            await docRef.update({'pdf_url': pdfUrl});
+            developer.log('Firestore updated with PDF URL');
+            
+          } on FirebaseException catch (e) {
+            developer.log('Firebase PDF upload error: ${e.code} - ${e.message}');
+            pdfUploaded = false;
+          } catch (e) {
+            developer.log('PDF upload failed (non-critical): $e');
+            pdfUploaded = false;
           }
         }
 
-        // 5. Create Final Log (pdfUrl might be null, which is handled)
-        final finalLog = SortingLog(
-          partNo: tempLog.partNo,
-          partName: tempLog.partName,
-          quantitySorted: tempLog.quantitySorted,
-          quantityNg: tempLog.quantityNg,
-          supplier: tempLog.supplier,
-          factoryLocation: tempLog.factoryLocation,
-          operators: tempLog.operators,
-          ngDetails: tempLog.ngDetails,
-          remarks: tempLog.remarks,
-          timestamp: tempLog.timestamp,
-          pdfUrl: pdfUrl,
-        );
-
-        // 6. Save to Firestore
-        await _firestoreService.addSortingLog(finalLog);
-
+        // STEP 5: Show success regardless of PDF upload status
         if (mounted) {
-          // Trigger Local Notification
+          // Notification
           await NotificationService.showNotification(
             id: 1,
-            title: 'Report Submitted',
-            body: 'QCSR for ${tempLog.partNo} has been saved successfully.',
+            title: 'Report Submitted ✅',
+            body: 'QCSR for ${_partNoController.text} saved.' +
+                (pdfUploaded ? ' PDF uploaded.' : ' PDF saved locally only.'),
           );
 
-          _showSuccessDialog(pdfBytes, tempLog.partNo);
+          // Show success dialog
+          _showSuccessDialog(
+            pdfBytes: pdfGenerated ? pdfBytes! : null,
+            partNo: _partNoController.text,
+            pdfUploadedToCloud: pdfUploaded,
+            pdfGenerated: pdfGenerated,
+          );
+          
           _resetForm();
         }
+
       } catch (e, stackTrace) {
-        developer.log('Error submitting log', error: e, stackTrace: stackTrace);
+        developer.log('CRITICAL ERROR in submission', error: e, stackTrace: stackTrace);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text('Error: ${e.toString()}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+            ),
           );
         }
       } finally {
@@ -226,7 +285,12 @@ class _QualityScanPageState extends State<QualityScanPage> {
     }
   }
 
-  void _showSuccessDialog(Uint8List pdfBytes, String partNo) {
+  void _showSuccessDialog({
+    required Uint8List? pdfBytes,
+    required String partNo,
+    required bool pdfUploadedToCloud,
+    required bool pdfGenerated,
+  }) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -259,34 +323,58 @@ class _QualityScanPageState extends State<QualityScanPage> {
               ),
               const SizedBox(height: 20),
               const Text(
-                'Submission Successful',
+                '✅ Submission Successful',
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Inspection log has been uploaded to Firebase Database.\nPDF Report is ready.',
+              Text(
+                'Log saved to database successfully!',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70, fontSize: 16),
+                style: const TextStyle(color: Colors.green, fontSize: 16, fontWeight: FontWeight.w500),
               ),
+              const SizedBox(height: 8),
+              if (!pdfGenerated)
+                const Text(
+                  '⚠️ PDF generation failed',
+                  style: TextStyle(color: Colors.orange, fontSize: 14),
+                )
+              else if (!pdfUploadedToCloud)
+                const Text(
+                  '⚠️ PDF cloud backup failed\n(PDF available for local sharing)',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.orange, fontSize: 14),
+                )
+              else
+                const Text(
+                  '✅ PDF uploaded to cloud',
+                  style: TextStyle(color: Colors.green, fontSize: 14),
+                ),
               const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    await Printing.sharePdf(bytes: pdfBytes, filename: 'QCSR_Report_$partNo.pdf');
-                  },
-                  icon: const Icon(Icons.chat, color: Colors.white),
-                  label: const Text('Share to WhatsApp', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green, // WhatsApp Green
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
+              if (pdfGenerated && pdfBytes != null)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      try {
+                        await Printing.sharePdf(bytes: pdfBytes, filename: 'QCSR_Report_$partNo.pdf');
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error sharing PDF: $e')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.share, color: Colors.white),
+                    label: const Text('Share PDF', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
+              if (pdfGenerated && pdfBytes != null) const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
@@ -329,7 +417,6 @@ class _QualityScanPageState extends State<QualityScanPage> {
     }
     setState(() {
       _ngEntries.clear();
-      // Do not add initial NG entry: _ngEntries.add(NgEntry());
     });
   }
 
@@ -385,8 +472,14 @@ class _QualityScanPageState extends State<QualityScanPage> {
   }
 
   Future<void> _generateAndPreviewPdf() async {
-    final pdfBytes = await _buildPdfBytes();
-    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdfBytes);
+    try {
+      final pdfBytes = await _buildPdfBytes();
+      await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdfBytes);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error generating PDF: $e')),
+      );
+    }
   }
 
   @override
@@ -436,7 +529,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 1. Job Information Card
+                  // Job Information Card
                   _buildModernSectionCard(
                     title: 'JOB INFORMATION',
                     icon: Icons.assignment_outlined,
@@ -501,7 +594,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // 2. Sorting Team Card
+                  // Operator Info Card
                   Card(
                     elevation: 0,
                     color: Theme.of(context).cardTheme.color,
@@ -541,9 +634,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
                                         labelText: 'Operator ${idx + 1} Name',
                                         labelStyle: const TextStyle(color: Colors.white70),
                                         prefixIcon: const Icon(Icons.person_outline, color: AppColors.primaryPurple),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                         enabledBorder: OutlineInputBorder(
                                           borderRadius: BorderRadius.circular(12),
                                           borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
@@ -595,7 +686,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // 3. Production Volume
+                  // Production Volume
                   _buildModernSectionCard(
                     title: 'PRODUCTION VOLUME',
                     icon: Icons.inventory_2_outlined,
@@ -656,7 +747,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // 4. NG Details
+                  // NG Details Section
                   Container(
                     padding: const EdgeInsets.all(16),
                     margin: const EdgeInsets.only(bottom: 12),
@@ -680,6 +771,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
                       ],
                     ),
                   ),
+                  
                   ..._ngEntries.asMap().entries.map((entry) {
                     int index = entry.key;
                     NgEntry detail = entry.value;
@@ -711,7 +803,6 @@ class _QualityScanPageState extends State<QualityScanPage> {
                                   onPressed: () => _removeNgEntry(index),
                                 ),
                               ],
-                              // ... rest of card
                             ),
                             const SizedBox(height: 8),
                             TextFormField(
@@ -811,6 +902,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
                       ),
                     );
                   }),
+                  
                   if (_ngEntries.isEmpty)
                     Container(
                       padding: const EdgeInsets.all(16),
@@ -841,7 +933,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
                   ),
                   const SizedBox(height: 24),
 
-                  // 5. Remarks
+                  // Remarks
                   _buildModernSectionCard(
                     title: 'ADDITIONAL REMARKS',
                     icon: Icons.note_alt_outlined,
@@ -870,6 +962,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
                   ),
                   const SizedBox(height: 32),
 
+                  // Submit Button
                   Container(
                     height: 64,
                     decoration: BoxDecoration(
@@ -889,7 +982,21 @@ class _QualityScanPageState extends State<QualityScanPage> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
                       child: _isSubmitting
-                          ? const CircularProgressIndicator(color: Colors.black)
+                          ? const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 3,
+                                    valueColor: AlwaysStoppedAnimation(Colors.white),
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Text('SUBMITTING...', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                              ],
+                            )
                           : const Text('COMPLETE & SUBMIT LOG', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black, letterSpacing: 1.2)),
                     ),
                   ),
@@ -900,38 +1007,41 @@ class _QualityScanPageState extends State<QualityScanPage> {
           ),
           if (_isSubmitting)
             Container(
-              color: Colors.black26,
-              child: const Center(child: CircularProgressIndicator()),
+              color: Colors.black54,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 60,
+                      height: 60,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 5,
+                        valueColor: AlwaysStoppedAnimation(AppColors.primaryPurple),
+                      ),
+                    ),
+                    SizedBox(height: 20),
+                    Text(
+                      'Submitting Report...',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Please wait...',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildSectionCard({required String title, required IconData icon, required List<Widget> children}) {
-    return Card(
-      elevation: 2,
-      color: Colors.indigo.shade800,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.indigo.shade900, width: 1.5),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1.1)),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ...children,
-          ],
-        ),
       ),
     );
   }
@@ -967,4 +1077,12 @@ class _QualityScanPageState extends State<QualityScanPage> {
       ),
     );
   }
+}
+
+class TimeoutException implements Exception {
+  final String message;
+  TimeoutException(this.message);
+  
+  @override
+  String toString() => message;
 }
