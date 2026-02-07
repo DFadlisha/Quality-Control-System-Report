@@ -10,6 +10,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:myapp/theme/app_colors.dart';
+import 'dart:typed_data';
 import 'dart:developer' as developer;
 
 class NgEntry {
@@ -117,6 +118,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
       });
 
       try {
+        // 1. Upload Images and Prepare Details
         List<NgDetail> ngDetails = [];
         for (var entry in _ngEntries) {
           String? imageUrl;
@@ -130,7 +132,8 @@ class _QualityScanPageState extends State<QualityScanPage> {
           ));
         }
 
-        final log = SortingLog(
+        // 2. Prepare Log Data (Temp object for PDF generation)
+        final tempLog = SortingLog(
           partNo: _partNoController.text,
           partName: _partNameController.text,
           quantitySorted: int.parse(_quantitySortedController.text),
@@ -143,13 +146,45 @@ class _QualityScanPageState extends State<QualityScanPage> {
           timestamp: Timestamp.now(),
         );
 
-        await _firestoreService.addSortingLog(log);
+        // 3. Generate PDF
+        final pdfBytes = await _buildPdfBytes();
+        
+        // 4. Upload PDF to Firebase Storage
+        final pdfRef = FirebaseStorage.instance
+            .ref()
+            .child('reports')
+            .child('report_${DateTime.now().millisecondsSinceEpoch}.pdf');
+        
+        await pdfRef.putData(pdfBytes, SettableMetadata(contentType: 'application/pdf'));
+        final pdfUrl = await pdfRef.getDownloadURL();
+
+        // 5. Create Final Log with PDF URL
+        final finalLog = SortingLog(
+          partNo: tempLog.partNo,
+          partName: tempLog.partName,
+          quantitySorted: tempLog.quantitySorted,
+          quantityNg: tempLog.quantityNg,
+          supplier: tempLog.supplier,
+          factoryLocation: tempLog.factoryLocation,
+          operators: tempLog.operators,
+          ngDetails: tempLog.ngDetails,
+          remarks: tempLog.remarks,
+          timestamp: tempLog.timestamp,
+          pdfUrl: pdfUrl,
+        );
+
+        // 6. Save to Firestore
+        await _firestoreService.addSortingLog(finalLog);
+
+        // 7. Share PDF via WhatsApp (or system share sheet)
+        await Printing.sharePdf(bytes: pdfBytes, filename: 'QCSR_Report_${tempLog.partNo}.pdf');
 
         if (mounted) {
           _showSuccessDialog();
           _resetForm();
         }
-      } catch (e) {
+      } catch (e, stackTrace) {
+        developer.log('Error submitting log', error: e, stackTrace: stackTrace);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
@@ -255,7 +290,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
     });
   }
 
-  Future<void> _generatePdf() async {
+  Future<Uint8List> _buildPdfBytes() async {
     final pdf = pw.Document();
 
     List<pw.Widget> ngWidgets = [];
@@ -303,7 +338,12 @@ class _QualityScanPageState extends State<QualityScanPage> {
       ),
     );
 
-    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
+    return await pdf.save();
+  }
+
+  Future<void> _generateAndPreviewPdf() async {
+    final pdfBytes = await _buildPdfBytes();
+    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdfBytes);
   }
 
   @override
@@ -339,7 +379,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
-            onPressed: _generatePdf,
+            onPressed: _generateAndPreviewPdf,
             tooltip: 'Generate PDF Report',
           ),
         ],

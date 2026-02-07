@@ -40,6 +40,7 @@ class SortingLog {
   final List<NgDetail> ngDetails;
   final String remarks;
   final Timestamp timestamp;
+  final String? pdfUrl;
 
   SortingLog({
     this.id,
@@ -53,6 +54,7 @@ class SortingLog {
     required this.ngDetails,
     required this.remarks,
     required this.timestamp,
+    this.pdfUrl,
   });
 
   factory SortingLog.fromFirestore(DocumentSnapshot doc) {
@@ -72,6 +74,7 @@ class SortingLog {
           [],
       remarks: data['remarks'] ?? '',
       timestamp: data['timestamp'] ?? Timestamp.now(),
+      pdfUrl: data['pdf_url'],
     );
   }
 
@@ -87,6 +90,7 @@ class SortingLog {
       'ng_details': ngDetails.map((e) => e.toMap()).toList(),
       'remarks': remarks,
       'timestamp': timestamp,
+      'pdf_url': pdfUrl,
     };
   }
 }

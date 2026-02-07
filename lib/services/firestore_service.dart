@@ -6,7 +6,7 @@ class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // Add a new sorting log
-  Future<void> addSortingLog(SortingLog log) {
+  Future<DocumentReference> addSortingLog(SortingLog log) {
     return _db.collection('sorting_logs').add(log.toFirestore());
   }
 
