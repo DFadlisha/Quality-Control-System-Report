@@ -12,6 +12,8 @@ import 'package:printing/printing.dart';
 import 'package:myapp/theme/app_colors.dart';
 import 'dart:typed_data';
 import 'dart:developer' as developer;
+import 'package:myapp/services/notification_service.dart';
+import 'package:share_plus/share_plus.dart';
 
 class NgEntry {
   final TextEditingController typeController = TextEditingController();
@@ -87,7 +89,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
       final storageRef = FirebaseStorage.instance
           .ref()
           .child('rejected_parts')
-          .child('${DateTime.now().toIso8601String()}_${image.path.split('/').last}');
+          .child('${DateTime.now().millisecondsSinceEpoch}_${image.path.split('/').last}');
       await storageRef.putFile(image);
       return await storageRef.getDownloadURL();
     } catch (e) {
@@ -158,16 +160,27 @@ class _QualityScanPageState extends State<QualityScanPage> {
         // 3. Generate PDF
         final pdfBytes = await _buildPdfBytes();
         
-        // 4. Upload PDF to Firebase Storage
-        final pdfRef = FirebaseStorage.instance
-            .ref()
-            .child('reports')
-            .child('report_${DateTime.now().millisecondsSinceEpoch}.pdf');
-        
-        await pdfRef.putData(pdfBytes, SettableMetadata(contentType: 'application/pdf'));
-        final pdfUrl = await pdfRef.getDownloadURL();
+        // 4. Upload PDF to Firebase Storage (Best Attempt)
+        String? pdfUrl;
+        try {
+          final pdfRef = FirebaseStorage.instance
+              .ref()
+              .child('reports')
+              .child('report_${DateTime.now().millisecondsSinceEpoch}.pdf');
+          
+          final uploadTask = pdfRef.putData(pdfBytes, SettableMetadata(contentType: 'application/pdf'));
+          final snapshot = await uploadTask;
+          pdfUrl = await snapshot.ref.getDownloadURL();
+        } catch (e) {
+          developer.log('PDF Upload Failed', error: e);
+          if (mounted) {
+             ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Note: PDF cloud backup failed, but log saved to Database.'), backgroundColor: Colors.orange),
+            );
+          }
+        }
 
-        // 5. Create Final Log with PDF URL
+        // 5. Create Final Log (pdfUrl might be null, which is handled)
         final finalLog = SortingLog(
           partNo: tempLog.partNo,
           partName: tempLog.partName,
@@ -186,6 +199,13 @@ class _QualityScanPageState extends State<QualityScanPage> {
         await _firestoreService.addSortingLog(finalLog);
 
         if (mounted) {
+          // Trigger Local Notification
+          await NotificationService.showNotification(
+            id: 1,
+            title: 'Report Submitted',
+            body: 'QCSR for ${tempLog.partNo} has been saved successfully.',
+          );
+
           _showSuccessDialog(pdfBytes, tempLog.partNo);
           _resetForm();
         }
@@ -239,12 +259,12 @@ class _QualityScanPageState extends State<QualityScanPage> {
               ),
               const SizedBox(height: 20),
               const Text(
-                'Saved Successfully',
+                'Submission Successful',
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
               ),
               const SizedBox(height: 12),
               const Text(
-                'Sorting log saved to Database.\nReady to Share.',
+                'Inspection log has been uploaded to Firebase Database.\nPDF Report is ready.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 16),
               ),

@@ -7,12 +7,14 @@ import 'package:myapp/features/home/home_page.dart';
 import 'package:myapp/theme/theme_provider.dart';
 import 'package:myapp/theme/app_colors.dart';
 import 'firebase_options.dart';
+import 'package:myapp/services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await NotificationService.init();
   runApp(
     MultiProvider(
       providers: [

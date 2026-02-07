@@ -653,25 +653,16 @@ class ManagementDashboard extends StatelessWidget {
     try {
       final scaffoldMessenger = ScaffoldMessenger.of(context);
       scaffoldMessenger.showSnackBar(
-        const SnackBar(content: Text('Generating Excel report...'), duration: Duration(seconds: 1)),
+        const SnackBar(content: Text('Generating report...'), duration: Duration(seconds: 1)),
       );
       
-      final filePath = await service.generateExcelReport(logs);
-      
-      scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: Text('CSV report saved to:\n$filePath'),
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'OK',
-            onPressed: () {},
-          ),
-        ),
-      );
+      await service.generateAndShareExcelReport(logs);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error generating Excel: $e'), backgroundColor: Colors.red),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating report: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 }
