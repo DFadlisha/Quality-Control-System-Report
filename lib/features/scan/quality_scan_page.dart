@@ -43,7 +43,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
   final _remarksController = TextEditingController();
   final _hourController = TextEditingController(text: DateTime.now().hour.toString().padLeft(2, '0'));
 
-  final List<NgEntry> _ngEntries = [NgEntry()];
+  final List<NgEntry> _ngEntries = [];
   final FirestoreService _firestoreService = FirestoreService();
   bool _isScanning = false;
   bool _isSubmitting = false;
@@ -103,16 +103,25 @@ class _QualityScanPageState extends State<QualityScanPage> {
   }
 
   void _removeNgEntry(int index) {
-    if (_ngEntries.length > 1) {
       setState(() {
         _ngEntries[index].dispose();
         _ngEntries.removeAt(index);
       });
-    }
   }
 
   void _submitLog() async {
     if (_formKey.currentState!.validate()) {
+      // Additional Validation: If NG Qty > 0, we must have NG entries
+      int ngQty = int.tryParse(_quantityNgController.text) ?? 0;
+      if (ngQty > 0 && _ngEntries.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('NG Quantity is > 0 but no Defect Details added.\nPlease add NG entries or set NG Qty to 0.'), backgroundColor: Colors.orange),
+          );
+        }
+        return;
+      }
+
       setState(() {
         _isSubmitting = true;
       });
@@ -238,7 +247,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Sorting log has been submitted and saved to the database.',
+                'Sorting log saved to Database.\nPDF Report Exported & Ready to Share.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 16),
               ),
@@ -286,7 +295,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
     }
     setState(() {
       _ngEntries.clear();
-      _ngEntries.add(NgEntry());
+      // Do not add initial NG entry: _ngEntries.add(NgEntry());
     });
   }
 
@@ -663,12 +672,12 @@ class _QualityScanPageState extends State<QualityScanPage> {
                                   ),
                                   child: Text('ENTRY #${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 13)),
                                 ),
-                                if (_ngEntries.length > 1)
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                    onPressed: () => _removeNgEntry(index),
-                                  ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                  onPressed: () => _removeNgEntry(index),
+                                ),
                               ],
+                              // ... rest of card
                             ),
                             const SizedBox(height: 8),
                             TextFormField(
@@ -768,6 +777,22 @@ class _QualityScanPageState extends State<QualityScanPage> {
                       ),
                     );
                   }),
+                  if (_ngEntries.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: const Text(
+                        "No Defect Details Recorded.\n(If NG Qty is 0, this is correct)",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white54, fontStyle: FontStyle.italic),
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
                     onPressed: _addNgEntry,

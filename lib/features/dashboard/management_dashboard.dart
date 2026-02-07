@@ -4,7 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:myapp/models/sorting_log.dart';
 import 'package:myapp/services/firestore_service.dart';
 import 'package:myapp/services/excel_export_service.dart';
+import 'package:myapp/services/excel_export_service.dart';
 import 'package:myapp/theme/app_colors.dart';
+import 'package:printing/printing.dart'; // For sharing PDF
+import 'package:http/http.dart' as http; // For downloading PDF
+import 'dart:typed_data'; // For Uint8List
 
 class ManagementDashboard extends StatelessWidget {
   const ManagementDashboard({super.key});
@@ -451,6 +455,7 @@ class ManagementDashboard extends StatelessWidget {
         const DataColumn(label: Text('PART NAME', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.white))),
         const DataColumn(label: Text('QTY', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.white))),
         const DataColumn(label: Text('NG DETAILS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.white))),
+        const DataColumn(label: Text('ACTION', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.white))),
       ],
       rows: logs.take(20).map((log) {
         String ops = log.operators.join(", ");
@@ -498,10 +503,46 @@ class ManagementDashboard extends StatelessWidget {
                 ),
               ),
             ),
+            DataCell(
+              Tooltip(
+                message: "Send PDF Report",
+                child: IconButton(
+                  icon: const Icon(Icons.chat, color: Colors.green, size: 24),
+                  onPressed: () => _shareReport(context, log),
+                ),
+              ),
+            ),
           ],
         );
       }).toList(),
     );
+  }
+
+  Future<void> _shareReport(BuildContext context, SortingLog log) async {
+    if (log.pdfUrl == null || log.pdfUrl!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No PDF report available for this entry.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Downloading report for sharing...'), duration: Duration(seconds: 1)),
+      );
+
+      final response = await http.get(Uri.parse(log.pdfUrl!));
+      if (response.statusCode == 200) {
+        final Uint8List pdfBytes = response.bodyBytes;
+        await Printing.sharePdf(bytes: pdfBytes, filename: 'QCSR_Report_${log.partNo}.pdf');
+      } else {
+        throw Exception('Failed to download PDF');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error sharing report: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   Widget _buildLeaderboard(List<String> operators, Map<String, Map<int, int>> data, List<SortingLog> logs) {
