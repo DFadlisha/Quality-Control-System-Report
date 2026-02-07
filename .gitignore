@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Miscellaneous
 *.class
 *.log
@@ -54,26 +53,21 @@ app.*.map.json
 
 # Temporary documentation files
 *_SUMMARY.md
-=======
-# Logs
-logs
-*.log
+
+# Node.js / npm
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
+dist/
+dist-ssr/
 *.local
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
@@ -88,5 +82,22 @@ android/.gradle
 android/build
 android/app/build
 android/.idea
-*.iml
->>>>>>> old-repo/main
+
+# ============================================
+# Firebase Security - NEVER COMMIT THESE!
+# ============================================
+
+# Firebase service account keys (contains sensitive credentials)
+serviceAccountKey.json
+*-firebase-adminsdk-*.json
+
+# Firebase local emulator data
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
