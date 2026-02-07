@@ -2,7 +2,6 @@ plugins {
     id "com.android.application"
     id "org.jetbrains.kotlin.android"
     id "dev.flutter.flutter-gradle-plugin"
-    id "com.google.gms.google-services"
 }
 
 def localProperties = new Properties()
@@ -25,7 +24,7 @@ if (flutterVersionName == null) {
 
 android {
     namespace "com.qcsr.mobile"
-    compileSdk 36
+    compileSdk 35
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -45,16 +44,15 @@ android {
     defaultConfig {
         applicationId "com.qcsr.mobile"
         minSdkVersion 23
-        targetSdkVersion 36
+        targetSdkVersion 35
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }
 
     buildTypes {
         release {
-            minifyEnabled true
-            shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            minifyEnabled false
+            shrinkResources false
             signingConfig signingConfigs.debug
         }
     }

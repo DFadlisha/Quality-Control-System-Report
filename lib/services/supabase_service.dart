@@ -163,7 +163,7 @@ class SupabaseService {
       
       await _client.storage
           .from(bucket)
-          .uploadBinary(fileName, fileBytes);
+          .uploadBinary(fileName, Uint8List.fromList(fileBytes));
 
       final publicUrl = _client.storage
           .from(bucket)
@@ -181,7 +181,7 @@ class SupabaseService {
     try {
       await _client.storage
           .from('reports')
-          .uploadBinary(fileName, pdfBytes, fileOptions: const FileOptions(
+          .uploadBinary(fileName, Uint8List.fromList(pdfBytes), fileOptions: const FileOptions(
             contentType: 'application/pdf',
           ));
 
