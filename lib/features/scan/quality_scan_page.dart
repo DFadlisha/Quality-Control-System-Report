@@ -185,11 +185,8 @@ class _QualityScanPageState extends State<QualityScanPage> {
         // 6. Save to Firestore
         await _firestoreService.addSortingLog(finalLog);
 
-        // 7. Share PDF via WhatsApp (or system share sheet)
-        await Printing.sharePdf(bytes: pdfBytes, filename: 'QCSR_Report_${tempLog.partNo}.pdf');
-
         if (mounted) {
-          _showSuccessDialog();
+          _showSuccessDialog(pdfBytes, tempLog.partNo);
           _resetForm();
         }
       } catch (e, stackTrace) {
@@ -209,7 +206,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
     }
   }
 
-  void _showSuccessDialog() {
+  void _showSuccessDialog(Uint8List pdfBytes, String partNo) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -247,23 +244,40 @@ class _QualityScanPageState extends State<QualityScanPage> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Sorting log saved to Database.\nPDF Report Exported & Ready to Share.',
+                'Sorting log saved to Database.\nReady to Share.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 16),
               ),
               const SizedBox(height: 28),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    await Printing.sharePdf(bytes: pdfBytes, filename: 'QCSR_Report_$partNo.pdf');
+                  },
+                  icon: const Icon(Icons.chat, color: Colors.white),
+                  label: const Text('Share to WhatsApp', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryPurple,
+                    backgroundColor: Colors.green, // WhatsApp Green
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
-                  child: const Text('OK', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: const BorderSide(color: Colors.white24),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Close', style: TextStyle(fontSize: 16)),
                 ),
               ),
             ],
