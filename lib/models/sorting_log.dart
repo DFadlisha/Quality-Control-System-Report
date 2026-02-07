@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class NgDetail {
   final String type;
   final String operatorName;
@@ -11,15 +9,15 @@ class NgDetail {
     this.imageUrl,
   });
 
-  factory NgDetail.fromMap(Map<String, dynamic> map) {
+  factory NgDetail.fromJson(Map<String, dynamic> json) {
     return NgDetail(
-      type: map['type'] ?? '',
-      operatorName: map['operator_name'] ?? '',
-      imageUrl: map['image_url'],
+      type: json['type'] ?? '',
+      operatorName: json['operator_name'] ?? '',
+      imageUrl: json['image_url'],
     );
   }
 
-  Map<String, dynamic> toMap() {
+  Map<String, dynamic> toJson() {
     return {
       'type': type,
       'operator_name': operatorName,
@@ -39,7 +37,7 @@ class SortingLog {
   final List<String> operators;
   final List<NgDetail> ngDetails;
   final String remarks;
-  final Timestamp timestamp;
+  final DateTime timestamp;
   final String? pdfUrl;
 
   SortingLog({
@@ -57,28 +55,26 @@ class SortingLog {
     this.pdfUrl,
   });
 
-  factory SortingLog.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+  factory SortingLog.fromJson(Map<String, dynamic> json, List<NgDetail> ngDetails) {
     return SortingLog(
-      id: doc.id,
-      partNo: data['part_no'] ?? '',
-      partName: data['part_name'] ?? '',
-      quantitySorted: data['quantity_sorted'] ?? 0,
-      quantityNg: data['quantity_ng'] ?? 0,
-      supplier: data['supplier'] ?? '',
-      factoryLocation: data['factory_location'] ?? '',
-      operators: (data['operators'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-      ngDetails: (data['ng_details'] as List<dynamic>?)
-              ?.map((e) => NgDetail.fromMap(e as Map<String, dynamic>))
-              .toList() ??
-          [],
-      remarks: data['remarks'] ?? '',
-      timestamp: data['timestamp'] ?? Timestamp.now(),
-      pdfUrl: data['pdf_url'],
+      id: json['id'],
+      partNo: json['part_no'] ?? '',
+      partName: json['part_name'] ?? '',
+      quantitySorted: json['quantity_sorted'] ?? 0,
+      quantityNg: json['quantity_ng'] ?? 0,
+      supplier: json['supplier'] ?? '',
+      factoryLocation: json['factory_location'] ?? '',
+      operators: (json['operators'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      ngDetails: ngDetails,
+      remarks: json['remarks'] ?? '',
+      timestamp: json['timestamp'] != null 
+          ? DateTime.parse(json['timestamp']) 
+          : DateTime.now(),
+      pdfUrl: json['pdf_url'],
     );
   }
 
-  Map<String, dynamic> toFirestore() {
+  Map<String, dynamic> toJson() {
     return {
       'part_no': partNo,
       'part_name': partName,
@@ -87,9 +83,8 @@ class SortingLog {
       'supplier': supplier,
       'factory_location': factoryLocation,
       'operators': operators,
-      'ng_details': ngDetails.map((e) => e.toMap()).toList(),
       'remarks': remarks,
-      'timestamp': timestamp,
+      'timestamp': timestamp.toIso8601String(),
       'pdf_url': pdfUrl,
     };
   }

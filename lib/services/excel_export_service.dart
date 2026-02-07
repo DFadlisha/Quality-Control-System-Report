@@ -34,7 +34,7 @@ class ExcelExportService {
       final log = logs[i];
       final rowIndex = i + 1;
       
-      final timestamp = DateFormat('yyyy-MM-dd HH:mm').format(log.timestamp.toDate());
+      final timestamp = DateFormat('yyyy-MM-dd HH:mm').format(log.timestamp);
       final operators = log.operators.join(', ');
       final ngTypes = log.ngDetails.map((e) => e.type).join(', ');
 

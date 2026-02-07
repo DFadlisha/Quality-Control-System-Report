@@ -2,10 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:myapp/models/sorting_log.dart';
-import 'package:myapp/services/firestore_service.dart';
+import 'package:myapp/services/supabase_service.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -46,7 +44,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
   final _hourController = TextEditingController(text: DateTime.now().hour.toString().padLeft(2, '0'));
 
   final List<NgEntry> _ngEntries = [];
-  final FirestoreService _firestoreService = FirestoreService();
+  final SupabaseService _supabaseService = SupabaseService();
   bool _isScanning = false;
   bool _isSubmitting = false;
 
@@ -86,19 +84,13 @@ class _QualityScanPageState extends State<QualityScanPage> {
 
   Future<String?> _uploadImage(File image) async {
     try {
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('rejected_parts')
-          .child('${DateTime.now().millisecondsSinceEpoch}_${image.path.split('/').last}');
-      
-      // Upload with timeout
-      final uploadTask = storageRef.putFile(image);
-      final snapshot = await uploadTask.timeout(
-        const Duration(seconds: 20),
-        onTimeout: () => throw TimeoutException('Image upload timeout'),
+      final bytes = await image.readAsBytes();
+      final imageUrl = await _supabaseService.uploadImage(
+        image.path,
+        bytes,
+        'rejected-parts',
       );
-      
-      return await snapshot.ref.getDownloadURL();
+      return imageUrl;
     } catch (e) {
       developer.log('Error uploading image: $e');
       return null;
@@ -173,8 +165,8 @@ class _QualityScanPageState extends State<QualityScanPage> {
           pdfGenerated = false;
         }
 
-        // STEP 3: Save to Firestore IMMEDIATELY (don't wait for PDF upload)
-        developer.log('Step 3: Saving log to Firestore...');
+        // STEP 3: Save to Supabase IMMEDIATELY (don't wait for PDF upload)
+        developer.log('Step 3: Saving log to Supabase...');
         final finalLog = SortingLog(
           partNo: _partNoController.text,
           partName: _partNameController.text,
@@ -185,13 +177,13 @@ class _QualityScanPageState extends State<QualityScanPage> {
           operators: _operatorControllers.map((c) => c.text).where((t) => t.isNotEmpty).toList(),
           ngDetails: ngDetails,
           remarks: _remarksController.text,
-          timestamp: Timestamp.now(),
+          timestamp: DateTime.now(),
           pdfUrl: null, // We'll update this later if upload succeeds
         );
 
-        // Save to Firestore first - this must succeed!
-        final docRef = await _firestoreService.addSortingLog(finalLog);
-        developer.log('Log saved to Firestore with ID: ${docRef.id}');
+        // Save to Supabase first - this must succeed!
+        final logId = await _supabaseService.addSortingLog(finalLog);
+        developer.log('Log saved to Supabase with ID: $logId');
 
         // STEP 4: Try PDF upload in background (non-blocking)
         String? pdfUrl;
@@ -202,41 +194,22 @@ class _QualityScanPageState extends State<QualityScanPage> {
             developer.log('Step 4: Attempting PDF upload (non-blocking)...');
             
             final fileName = 'report_${_partNoController.text.replaceAll(RegExp(r'[^\w\s-]'), '_')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
-            final pdfRef = FirebaseStorage.instance
-                .ref()
-                .child('reports')
-                .child(fileName);
             
-            final metadata = SettableMetadata(
-              contentType: 'application/pdf',
-              customMetadata: {
-                'partNo': _partNoController.text,
-                'uploadedAt': DateTime.now().toIso8601String(),
-                'firestoreId': docRef.id,
-              },
-            );
+            // Upload PDF to Supabase Storage
+            pdfUrl = await _supabaseService.uploadPdf(fileName, pdfBytes);
             
-            // Try to upload with 20 second timeout
-            final uploadTask = pdfRef.putData(pdfBytes, metadata);
-            final snapshot = await uploadTask.timeout(
-              const Duration(seconds: 20),
-              onTimeout: () {
-                developer.log('PDF upload timeout - continuing anyway');
-                throw TimeoutException('PDF upload timeout');
-              },
-            );
+            if (pdfUrl != null) {
+              pdfUploaded = true;
+              developer.log('PDF uploaded successfully: $pdfUrl');
+              
+              // Update Supabase with PDF URL
+              await _supabaseService.updatePdfUrl(logId, pdfUrl!);
+              developer.log('Supabase updated with PDF URL');
+            } else {
+              pdfUploaded = false;
+              developer.log('PDF upload failed - no URL returned');
+            }
             
-            pdfUrl = await snapshot.ref.getDownloadURL();
-            pdfUploaded = true;
-            developer.log('PDF uploaded successfully: $pdfUrl');
-            
-            // Update Firestore with PDF URL
-            await docRef.update({'pdf_url': pdfUrl});
-            developer.log('Firestore updated with PDF URL');
-            
-          } on FirebaseException catch (e) {
-            developer.log('Firebase PDF upload error: ${e.code} - ${e.message}');
-            pdfUploaded = false;
           } catch (e) {
             developer.log('PDF upload failed (non-critical): $e');
             pdfUploaded = false;
@@ -492,7 +465,7 @@ class _QualityScanPageState extends State<QualityScanPage> {
             final Barcode barcode = capture.barcodes.first;
             if (barcode.rawValue != null) {
               _partNoController.text = barcode.rawValue!;
-              _firestoreService.getPartName(barcode.rawValue!).then((partName) {
+              _supabaseService.getPartName(barcode.rawValue!).then((partName) {
                 if (partName != null) {
                   _partNameController.text = partName;
                 }

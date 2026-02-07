@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/services/firestore_service.dart';
+import 'package:myapp/services/supabase_service.dart';
 import 'package:myapp/theme/app_colors.dart';
 
 /// Admin page for dangerous operations like deleting all data
@@ -11,7 +11,7 @@ class AdminUtilitiesPage extends StatefulWidget {
 }
 
 class _AdminUtilitiesPageState extends State<AdminUtilitiesPage> {
-  final FirestoreService _firestoreService = FirestoreService();
+  final SupabaseService _supabaseService = SupabaseService();
   bool _isDeleting = false;
 
   Future<void> _confirmAndDeleteAllLogs() async {
@@ -73,7 +73,7 @@ class _AdminUtilitiesPageState extends State<AdminUtilitiesPage> {
       setState(() => _isDeleting = true);
 
       try {
-        await _firestoreService.deleteAllLogs();
+        await _supabaseService.deleteAllLogs();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -187,7 +187,7 @@ class _AdminUtilitiesPageState extends State<AdminUtilitiesPage> {
                         ),
                         const SizedBox(height: 16),
                         const Text(
-                          'This will permanently delete all sorting logs from the Firebase database.',
+                          'This will permanently delete all sorting logs from the Supabase database.',
                           style: TextStyle(color: Colors.white70, fontSize: 14),
                         ),
                         const SizedBox(height: 8),
@@ -265,8 +265,8 @@ class _AdminUtilitiesPageState extends State<AdminUtilitiesPage> {
                         ),
                         SizedBox(height: 12),
                         Text(
-                          'PDF files in Firebase Storage will NOT be deleted. '
-                          'You must delete them manually from Firebase Console → Storage if needed.',
+                          'PDF files in Supabase Storage will NOT be deleted. '
+                          'You must delete them manually from Supabase Dashboard → Storage if needed.',
                           style: TextStyle(color: Colors.white70, fontSize: 14),
                         ),
                       ],

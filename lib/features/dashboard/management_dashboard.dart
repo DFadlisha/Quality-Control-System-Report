@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:myapp/models/sorting_log.dart';
-import 'package:myapp/services/firestore_service.dart';
+import 'package:myapp/services/supabase_service.dart';
 import 'package:myapp/services/excel_export_service.dart';
 import 'package:myapp/theme/app_colors.dart';
 import 'package:myapp/services/sample_data_service.dart';
@@ -19,14 +18,14 @@ class ManagementDashboard extends StatefulWidget {
 }
 
 class _ManagementDashboardState extends State<ManagementDashboard> {
-  final FirestoreService _firestoreService = FirestoreService();
+  final SupabaseService _supabaseService = SupabaseService();
   final ExcelExportService _excelExportService = ExcelExportService();
   late Stream<List<SortingLog>> _logsStream;
 
   @override
   void initState() {
     super.initState();
-    _logsStream = _firestoreService.getSortingLogs();
+    _logsStream = _supabaseService.getSortingLogs();
   }
 
   @override
@@ -339,7 +338,7 @@ class _ManagementDashboardState extends State<ManagementDashboard> {
     Map<String, Map<int, int>> operatorHourly = {};
     for (var log in logs) {
       final ops = log.operators.isEmpty ? ["Unknown"] : log.operators;
-      final hour = log.timestamp.toDate().hour;
+      final hour = log.timestamp.hour;
       final splitQty = (log.quantitySorted / ops.length).floor();
 
       for (var op in ops) {
@@ -542,7 +541,7 @@ class _ManagementDashboardState extends State<ManagementDashboard> {
   LineChartData _buildChartData(List<SortingLog> logs, BuildContext context) {
     final Map<int, double> hourlyData = {};
     for (var log in logs) {
-      final hour = log.timestamp.toDate().hour;
+      final hour = log.timestamp.hour;
       hourlyData.update(hour, (value) => value + log.quantitySorted, ifAbsent: () => log.quantitySorted.toDouble());
     }
 

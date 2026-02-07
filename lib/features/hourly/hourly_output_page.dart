@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:myapp/models/sorting_log.dart';
-import 'package:myapp/services/firestore_service.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:myapp/services/supabase_service.dart';
 import 'package:myapp/theme/app_colors.dart';
 
 class HourlyOutputPage extends StatefulWidget {
@@ -20,7 +19,7 @@ class _HourlyOutputPageState extends State<HourlyOutputPage> {
   final _quantityNgController = TextEditingController();
   final _hourController = TextEditingController(text: DateTime.now().hour.toString().padLeft(2, '0'));
   
-  final FirestoreService _firestoreService = FirestoreService();
+  final SupabaseService _supabaseService = SupabaseService();
   bool _isSubmitting = false;
 
   @override
@@ -52,10 +51,10 @@ class _HourlyOutputPageState extends State<HourlyOutputPage> {
         operators: _operatorControllers.map((c) => c.text.trim()).where((name) => name.isNotEmpty).toList(),
         remarks: 'Hourly output for hour ${_hourController.text}',
         ngDetails: [],
-        timestamp: Timestamp.now(),
+        timestamp: DateTime.now(),
       );
 
-      await _firestoreService.addSortingLog(log);
+      await _supabaseService.addSortingLog(log);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
