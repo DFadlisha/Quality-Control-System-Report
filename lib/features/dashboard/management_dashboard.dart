@@ -11,18 +11,30 @@ import 'package:printing/printing.dart'; // For sharing PDF
 import 'package:http/http.dart' as http; // For downloading PDF
 import 'dart:typed_data'; // For Uint8List
 
-class ManagementDashboard extends StatelessWidget {
+class ManagementDashboard extends StatefulWidget {
   const ManagementDashboard({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final FirestoreService firestoreService = FirestoreService();
-    final ExcelExportService excelExportService = ExcelExportService();
+  State<ManagementDashboard> createState() => _ManagementDashboardState();
+}
 
+class _ManagementDashboardState extends State<ManagementDashboard> {
+  final FirestoreService _firestoreService = FirestoreService();
+  final ExcelExportService _excelExportService = ExcelExportService();
+  late Stream<List<SortingLog>> _logsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _logsStream = _firestoreService.getSortingLogs();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return DefaultTabController(
       length: 2,
       child: StreamBuilder<List<SortingLog>>(
-        stream: firestoreService.getSortingLogs(),
+        stream: _logsStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
@@ -60,7 +72,7 @@ class ManagementDashboard extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.table_chart, color: Colors.white),
                   tooltip: 'Export Excel',
-                  onPressed: logs.isEmpty ? null : () => _exportExcel(context, excelExportService, logs),
+                  onPressed: logs.isEmpty ? null : () => _exportExcel(context, _excelExportService, logs),
                 ),
                 IconButton(
                   icon: const Icon(Icons.cloud_upload_outlined, color: Colors.orange), // Seed Data Button
