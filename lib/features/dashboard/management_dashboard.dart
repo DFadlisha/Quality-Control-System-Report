@@ -6,6 +6,7 @@ import 'package:myapp/services/firestore_service.dart';
 import 'package:myapp/services/excel_export_service.dart';
 import 'package:myapp/services/excel_export_service.dart';
 import 'package:myapp/theme/app_colors.dart';
+import 'package:myapp/services/sample_data_service.dart';
 import 'package:printing/printing.dart'; // For sharing PDF
 import 'package:http/http.dart' as http; // For downloading PDF
 import 'dart:typed_data'; // For Uint8List
@@ -60,6 +61,16 @@ class ManagementDashboard extends StatelessWidget {
                   icon: const Icon(Icons.table_chart, color: Colors.white),
                   tooltip: 'Export Excel',
                   onPressed: logs.isEmpty ? null : () => _exportExcel(context, excelExportService, logs),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.cloud_upload_outlined, color: Colors.orange), // Seed Data Button
+                  tooltip: 'Add Sample Data (Debug)',
+                  onPressed: () async {
+                    await SampleDataService().generateSampleData();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Starting Sample Data Generation...'), duration: Duration(seconds: 1)),
+                    );
+                  },
                 ),
               ],
             ),
